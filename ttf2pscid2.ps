@@ -1,0 +1,2068 @@
+%!PS-Adobe-3.0
+
+% TTF to CID-keyed font converter by Raymond Luckhurst, scriptit.co.uk
+%
+% Converts TTF to a Type 2 CIDFont with 2-byte Unicode CMap encoding,
+% for embedding into PostScript directly as CMap and CIDFont dictionaries,
+% not as Adobe conformant CID-keyed font files.
+% The TrueType font is wrapped in PostScript syntax as sfnts binary data
+% as for Type 42 base fonts. The CIDMap is compacted to reduce file size
+% and command line options offer further compression. Subsetting is supported.
+% OpenType/CFF is not yet supported but OpenType/TTF is.
+%
+% Basic Multilingual Plane only.
+%
+% Based on Apple's TrueType Reference Manual
+% see https://developer.apple.com/fonts/TrueType-Reference-Manual
+% and https://www.microsoft.com/typography/otspec/otff.htm
+%
+% Conventions:
+% r_ reader procs
+% w_ writer procs
+% d_ directory entry
+% t_ table data
+% $ variables
+
+/include { inc dup length 2 index length add string dup dup 5 2 roll copy length exch putinterval run } bind def
+
+(string.ps) include
+(file.ps) include
+(sort.ps) include
+(math.ps) include
+
+/$stdout (%stdout)(w) file def
+/$stderr (%stderr)(w) file def
+/notice { $stdout dup dup 4 -1 roll writestring (\n) writestring flushfile } bind def
+/warning { [ exch (WARNING ) exch (\n) ] concata $stderr exch writestring $stderr flushfile } bind def
+/error { [ exch (ERROR ) exch (\n) ] concata $stderr exch writestring $stderr flushfile stop } bind def
+
+% constants
+/MAX_CID 65534 def
+/MAX_STRING_SIZE 65535 def
+/MAX_ARRAY_SIZE 65535 def
+/MAX_DICT_SIZE 65535 def
+/ARG_1_AND_2_ARE_WORDS 1 0 bitshift def
+/ARGS_ARE_XY_VALUES 1 1 bitshift def
+/ROUND_XY_TO_GRID 1 2 bitshift def
+/WE_HAVE_A_SCALE 1 3 bitshift def
+/MORE_COMPONENTS 1 5 bitshift def
+/WE_HAVE_AN_X_AND_Y_SCALE 1 6 bitshift def
+/WE_HAVE_A_TWO_BY_TWO 1 7 bitshift def
+/WE_HAVE_INSTRUCTIONS 1 8 bitshift def
+/USE_MY_METRICS 1 9 bitshift def
+/OVERLAP_COMPOUND 1 10 bitshift def
+/TABLES [ % tag, required/optional in TTF, emit to Type42
+	[/head true true]
+	[/hhea true true]
+	[/hmtx true true]
+	[/loca true true]
+	[/glyf true true]
+	[/cmap true false]
+	[/name true false]
+	[/maxp true true]
+	[/post true false]
+	[/cvt_ false true]
+	[/fpgm false true]
+	[/prep false true]
+%	[/cff_ false false]
+%	[/os_2 false false]
+] readonly def
+/TAG_NAMES << % TTF tag name conversions to simplify postscript code
+	(cvt ) (cvt_)
+	/cvt_ (cvt )
+	(CFF ) (cff_)
+	/cff_ (CFF )
+	(OS/2) (os_2)
+	/os_2 (OS/2)
+	//TABLES { 0 get dup dup length string cvs } forall % last
+>> readonly def
+/UNDERLINE_THICKNESS_CIDS [ (_-.|!liI1) {} forall 16#2013 16#2014 ] readonly def % thinnest cids for ul
+
+% primatives readers
+/r_uint8 { $r read pop } bind def
+/r_uint16 { r_uint8 8 bitshift r_uint8 or } bind def
+/r_int16 { r_uint16 dup 16#8000 and 0 ne { 16#7FFF not or } if } bind def
+/r_uint32 { r_uint16 16 bitshift r_uint16 or } bind def
+/r_int32 { r_uint32 dup 16#80000000 and 0 ne { 16#7FFFFFFF not or } if } bind def
+/r_Fixed { r_int32 65536 div } bind def
+/r_uFWord { r_uint16 } bind def
+/r_FWord { r_int16 } bind def
+/r_longDateTime { 8 r_string } bind def
+/r_bytes { [ exch { r_uint8 } repeat ] } bind def
+/r_words { [ exch { r_uint16 } repeat ] } bind def
+/r_longs { [ exch { r_uint32 } repeat ] } bind def
+/r_string { dup 0 gt { $r exch string readstring pop }{ pop () } ifelse } bind def
+/r_skip { $r fileposition add $r exch setfileposition } bind def
+/r_peek8 { r_uint8 -1 r_skip } bind def
+/r_peek16 { r_uint16 -2 r_skip } bind def
+/r_peek32 { r_uint32 -4 r_skip } bind def
+
+% primatives writers
+/w_uint8 { $w exch write } bind def
+/w_uint16 { dup -8 bitshift w_uint8 w_uint8 } bind def
+/w_int16 { w_uint16 } bind def
+/w_uint32 { dup -16 bitshift w_uint16 w_uint16 } bind def
+/w_int32 { w_uint32 } bind def
+/w_Fixed { 65536 mul cvi w_uint32 } bind def
+/w_uFWord { w_uint16 } bind def
+/w_FWord { w_int16 } bind def
+/w_longDateTime { dup length dup 8 ne { 8 min 0 exch getinterval 8 string exch 1 index copy } if pop w_string } bind def
+/w_bytes { { w_uint8 } forall } bind def
+/w_words { { w_uint16 } forall } bind def
+/w_string { $w exch writestring } bind def
+/w_zero { { 0 w_uint8 } repeat } bind def
+/w_poke16 { 2 getinterval /NullEncode filter /$w exch def w_uint16 $w closefile } bind def % value string position
+/w_poke32 { 4 getinterval /NullEncode filter /$w exch def w_uint32 $w closefile } bind def % value string position
+
+% stream writer system
+
+/sinit {
+	userdict /UserObjects known not { 0 null defineuserobject } if % init UOs
+	1 execuserobject type /booleantype eq dup not {
+		0 //MAX_STRING_SIZE string defineuserobject % data target
+	} if
+} bind def
+
+/sfile {
+	sstatus {
+		(sfile: cannot nest ) warning
+	} if
+	1 true defineuserobject % status, false if closed
+	2 0 defineuserobject % insertion position and data length
+	3 null defineuserobject % data copy
+	{ % filter proc
+		1 exch defineuserobject % status
+		2 exch length 2 execuserobject add defineuserobject % new length
+		0 execuserobject 2 execuserobject 1 index length 1 index sub getinterval % remaining space
+		dup length 0 eq {
+			(sfile: out of buffer space) error
+		} if
+	} /NullEncode filter
+} bind def
+
+/sstatus {
+	sinit { 1 execuserobject }{ false } ifelse
+} bind def
+
+/sreset {
+	sinit { 2 0 defineuserobject } if
+} bind def
+
+/slength {
+	sinit { 2 execuserobject }{ 0 } ifelse
+} bind def
+
+/sdata {
+	sinit { 0 execuserobject 0 2 execuserobject getinterval }{ 0 string } ifelse
+} bind def
+
+/scopy {
+	sinit {
+		3 execuserobject null eq { 3 sdata dup length string copy defineuserobject } if % cache
+		3 execuserobject
+	}{
+		0 string
+	} ifelse
+} bind def
+
+% on-demand TTF table reader/decoder
+/r_decode {
+	$r fileposition exch % save position
+	dup
+	dup
+	dup 0 (d) putinterval load % directory entry
+	$r 1 index /offset get setfileposition % set position
+	1 index 0 (r) putinterval
+	exch cvx exec % read table
+	1 index 0 (t) putinterval
+	exch 1 index def % redefine t_* as the read data
+	exch $r exch setfileposition % restore position
+} bind def
+
+% on-demand TTF table writer/encoder
+/w_encode {
+	dup
+	dup
+	cvx exec % load table
+	exch dup 0 (w) putinterval
+	/$w sfile def
+	cvx exec % write table
+	$w closefile
+	dup 0 (d) putinterval load % directory entry
+	dup /data known not { % not array data (glyf hmtx loca)
+		/data scopy put
+	}{
+		pop
+	} ifelse
+} bind def
+
+% TTF directory and table readers/writers
+
+/r_directory {
+	% parse offset subtable
+	6 dict dup begin
+		/type r_uint32 def % 16#00010000 for TTF, 16#4F54544F for OTF
+		/numTables r_uint16 def
+		/searchRange r_uint16 def
+		/entrySelector r_uint16 def
+		/rangeShift r_uint16 def
+		% parse table directory
+		/directory [
+			numTables {
+				<<
+					/tag 4 r_string
+					/checkSum r_uint32
+					/offset r_uint32
+					/Length r_uint32
+				>>
+			} repeat
+		] def
+	end
+	/t_directory 1 index def
+	% define directory dictionaries
+	/directory get {
+		dup /tag get
+		//TAG_NAMES 1 index known {
+			//TAG_NAMES exch get % ps name
+			(d_) 1 index concat2 3 -1 roll def % directory entry
+			(t_) exch concat2 [ 1 index /r_decode cvx ] cvx def % reader fn
+		}{
+			pop pop
+		} ifelse
+	} forall
+	% check required TTF tables are present
+	[ //TABLES {
+		aload pop
+		(d_) 3 index concat2
+		currentdict exch known not {
+			pop exch
+			//TAG_NAMES exch get % ttf name
+			(: table missing) concat2 exch { error }{ pop } ifelse % or pop/warning
+		}{
+			exch pop not { pop } if
+			dup length string cvs
+		} ifelse
+	} forall ]
+	{} insertionsort
+	/$tables exch def % Type42 tables to emit
+} bind def
+
+/w_directory {
+	% get table data
+	$tables {
+		(t_) exch concat2
+		exec w_encode
+	} forall
+	% update directory entries
+	/$offset 12 $tables length 16 mul add def % running offset
+	/$checksum 0 def % file checksum
+	$tables {
+		(d_) exch concat2 load begin
+			data type /arraytype eq {
+				0 0 % length checksum
+				data {
+					dup null ne {
+						dup checksum exch length
+						4 -1 roll add 3 1 roll iadd32
+					}{
+						pop
+					} ifelse
+				} forall
+				/checkSum exch def % for padded data
+				/Length 1 index def % data length padded
+			}{
+				/Length data length def % unpadded
+				/data data zeropad def % pad
+				/checkSum data checksum def % for padded data
+				data length % padded
+			} ifelse
+			/offset $offset def
+			/$offset $offset 3 -1 roll add store
+			/$checksum $checksum checkSum iadd32 store
+		end
+	} forall
+	% make offset subtable
+	5 dict
+	dup /numTables $tables length put
+	dup searchargs
+	/$w sfile def
+	dup begin
+		16#00010000 w_uint32
+		numTables w_uint16
+		searchRange w_uint16
+		entrySelector w_uint16
+		rangeShift w_uint16
+	end
+	$tables {
+		(d_) exch concat2 load begin
+			tag w_string
+			checkSum w_uint32
+			offset w_uint32
+			Length w_uint32
+		end
+	} forall
+	$w closefile
+	dup /data scopy put
+	% do checkSumAdjustment
+	/$checksum 1 index /data get checksum $checksum iadd32 def
+	16#B1B0AFBA $checksum isub32
+	d_head /data get 8 w_poke32
+	currentdict /$offset undef
+	currentdict /$checksum undef
+} bind def
+
+/r_cff_ {
+	begin
+		Length //MAX_STRING_SIZE div ceiling cvi array
+		Length
+		0 1 3 index length 1 sub {
+			1 index //MAX_STRING_SIZE min r_string
+			dup length 3 1 roll
+			4 index 3 1 roll put
+			sub
+		} for
+		pop
+		userdict begin
+			/cff exch def % raw CFF data chunks
+%			(ttf2type42-cff.ps) include % CFF parsing
+		end
+false {
+		$r offset setfileposition
+		<<
+			% Header
+			/major r_CFF_Card8
+			/minor r_CFF_Card8
+			/hdrSize r_CFF_Card8
+			/offSize r_CFF_OffSize
+			/Name r_CFF_INDEX
+			/TopDICT r_CFF_INDEX
+			/String r_CFF_INDEX
+			/GlobalSubr r_CFF_INDEX
+		>> begin
+			% parse TopDICT recursively
+			TopDICT /data get
+			0 1 2 index length 1 sub {
+				2 copy 2 copy get r_CFF_DICT
+				dup CFF_ESCAPE 6 or known {
+					dup CFF_ESCAPE 6 or get
+				}{
+					CFF_TOP_DICT_DEFAULTS /CharstringType get
+				} ifelse
+				/$CharstringType exch def
+				r_CFF_DICT_sanitise
+				CFF_TOP_DICT_DEFAULTS r_CFF_DICT_defaults
+				put pop
+			} for
+			pop
+			currentdict
+		end
+} if
+	end
+	cff
+} bind def
+
+/r_cmap { % just store the encoding table header and create procs for specific subtable formats
+% useful: ttcmap.c from The FreeType Project, https://www.freetype.org/
+	<<
+		/version r_uint16
+		/numberSubtables r_uint16
+		/encodingSubtables [
+			2 index {
+				<<
+					/platformID r_uint16
+					/platformSpecificID r_uint16
+					/offset r_uint32
+					/format null % peeked
+				>>
+			} repeat
+		]
+	>>
+	exch /offset get
+	1 index /encodingSubtables get {
+		dup /offset get 2 index add
+		$r exch setfileposition
+		r_peek16 % format
+		dup 8 ge 1 index 13 le and { cvr } if % 32-bit fixed-point format
+		/format exch put
+	} forall
+	pop
+} bind def
+
+/r_cmap_0 {
+	begin
+		/format r_uint16 def
+		/Length r_uint16 def
+		/language r_uint16 def
+		/glyphIndexArray 256 r_bytes def
+		currentdict
+	end
+	exch pop
+} bind def
+
+/r_cmap_2 {
+	begin
+		/format r_uint16 def
+		/Length r_uint16 def
+		/language r_uint16 def
+		/subHeaderKeys 256 r_words def
+		0 subHeaderKeys { 8 idiv max } forall % max subheaders
+		dup 1 add array % subheaders
+		exch 0 1 2 index
+		{
+			<<
+				/firstCode r_uint16
+				/entryCount r_uint16
+				/idDelta r_int16
+				/idRangeOffset r_uint16 % from here
+			>>
+			dup /idRangeOffset get 2 sub % offset to range
+			3 index 3 index sub 8 mul % offset to glyphIndexArray
+			sub 2 idiv % index into glyphIndexArray for firstCode
+			1 index exch /firstCodeIndex exch put
+			3 index 3 1 roll put
+		} for
+		pop
+		/subHeaders exch def
+		Length add $r fileposition sub 2 idiv r_words % # GIDs
+		/glyphIndexArray exch def
+		currentdict
+	end
+} bind def
+
+/r_cmap_4 {
+	begin
+		/format r_uint16 def
+		/Length r_uint16 def
+		/language r_uint16 def
+		/segCount r_uint16 2 idiv def
+		/searchRange r_uint16 def
+		/entrySelector r_uint16 def
+		/rangeShift r_uint16 def
+		/endCode segCount r_words def
+		2 r_skip
+		/startCode segCount r_words def
+		/idDelta segCount r_words def
+		/idRangeOffset segCount r_words def
+		Length add $r fileposition sub 2 idiv r_words % # GIDs
+		/glyphIndexArray exch def
+		currentdict
+	end
+} bind def
+
+/r_cmap_6 {
+	begin
+		/format r_uint16 def
+		/Length r_uint16 def
+		/language r_uint16 def
+		/firstCode r_uint16 def
+		/entryCount r_uint16 def
+		/glyphIndexArray entryCount r_words def
+		currentdict
+	end
+	exch pop
+} bind def
+
+/r_cmap_8.0 {
+	(cmap: format 8.0 not supported) warning
+	dup /format r_Fixed put
+	exch pop
+} bind def
+
+/r_cmap_10.0 {
+	(cmap: format 10.0 not supported) warning
+	dup /format r_Fixed put
+	exch pop
+} bind def
+
+/r_cmap_12.0 {
+	begin
+		/format r_Fixed def
+		/Length r_uint32 def
+		/language r_uint32 def
+		/nGroups r_uint32 def
+		nGroups [ exch {
+			<<
+				/startCharCode r_uint32
+				/endCharCode r_uint32
+				/startGlyphCode r_uint32
+			>>
+		} repeat ]
+		/groups exch def
+		currentdict
+	end
+	exch pop
+} bind def
+
+/r_cmap_13.0 {
+	(cmap: format 13.0 not supported) warning
+	dup /format r_Fixed put
+	exch pop
+} bind def
+
+/r_cmap_14 {
+	(cmap: format 14 not supported) warning
+	dup /format r_uint16 put
+	exch pop
+} bind def
+
+/r_cvt_ {
+	/Length get r_string % controlValues
+} bind def
+
+/w_cvt_ {
+	w_string
+} bind def
+
+/r_fpgm {
+	/Length get r_string % instructions
+} bind def
+
+/w_fpgm {
+	w_string
+} bind def
+
+/r_glyf { % just store the unpacked binary and info to re-index component glyphs
+	/offset get
+	t_loca
+	dup length 1 sub % # glyphs
+	dup array
+	4 1 roll
+	0 1 3 -1 roll 1 sub
+	{
+		2 copy 1 add get % next glyph position
+		2 index 2 index get % start
+		2 copy gt { % not empty
+			dup 5 index add % offset
+			$r 1 index setfileposition
+			3 1 roll sub r_string % description
+			$r 2 index setfileposition % back
+			<<
+				/description 3 -1 roll
+				/numberOfContours r_int16
+				/xMin r_FWord
+				/yMin r_FWord
+				/xMax r_FWord
+				/yMax r_FWord
+			>>
+			dup /numberOfContours get 0 lt {
+				[ {
+					<<
+						/flags r_uint16 % for testing
+						/offset $r fileposition % for poking in new GID
+						/glyphIndex r_uint16 % may need remapping
+					>>
+					dup /flags get
+					dup //ARG_1_AND_2_ARE_WORDS and 0 ne { 4 }{ 2 } ifelse exch
+					dup //WE_HAVE_A_SCALE and 0 ne {
+						exch 2 add exch
+					}{
+						dup //WE_HAVE_AN_X_AND_Y_SCALE and 0 ne {
+							exch 4 add exch
+						}{
+							dup //WE_HAVE_A_TWO_BY_TWO and 0 ne {
+								exch 8 add exch
+							} if
+						} ifelse
+					} ifelse
+					exch r_skip
+					//MORE_COMPONENTS and 0 eq { exit } if
+				} loop ]
+				dup dup length 1 sub get /flags get //WE_HAVE_INSTRUCTIONS and 0 ne {
+					r_uint16 % # instructions
+					r_skip
+				} if
+				dup { /offset 2 copy get 5 index sub put } forall % GID offsets from description
+				1 index /components 3 -1 roll put
+			} if
+			exch pop
+			4 index 3 1 roll put
+		}{
+			pop pop pop % empty
+		} ifelse
+	} for
+	pop pop
+} bind def
+
+/w_glyf {
+	dup length array % padded descriptions
+	dup length 1 add array % new loca
+	3 -1 roll 0 % offset
+	exch 0 1 2 index length 1 sub
+	{
+		2 copy get
+		dup null ne {
+			/description get zeropad
+			dup length exch
+			6 index exch 3 index exch put
+		}{
+			pop 0
+		} ifelse
+		exch
+		4 index exch 4 index put
+		3 -1 roll add exch
+	} for
+	length exch 2 index 3 1 roll put % last loca
+	/t_loca exch def
+	d_glyf exch /data exch put
+} bind def
+
+/r_head {
+	pop
+	<<
+		/version r_Fixed
+		/fontRevision r_Fixed
+		/checkSumAdjustment r_uint32
+		/magicNumber r_uint32
+		/flags r_uint16
+		/unitsPerEm r_uint16
+		/created r_longDateTime
+		/modified r_longDateTime
+		/xMin r_FWord
+		/yMin r_FWord
+		/xMax r_FWord
+		/yMax r_FWord
+		/macStyle r_uint16
+		/lowestRecPPEM r_uint16
+		/fontDirectionHint r_int16
+		/indexToLocFormat r_int16
+		/glyphDataFormat r_int16
+	>>
+} bind def
+
+/w_head {
+	begin
+		/indexToLocFormat t_loca dup length 1 sub get 16#20000 idiv 1 min def % possibly changed
+		version w_Fixed
+		fontRevision w_Fixed
+		0 w_uint32 % checkSumAdjustment
+		16#5F0F3CF5 w_uint32 % magicNumber
+		flags w_uint16
+		unitsPerEm w_uint16
+		created w_longDateTime
+		modified w_longDateTime
+		xMin w_FWord
+		yMin w_FWord
+		xMax w_FWord
+		yMax w_FWord
+		macStyle w_uint16
+		lowestRecPPEM w_uint16
+		fontDirectionHint w_int16
+		indexToLocFormat w_int16
+		glyphDataFormat w_int16
+	end
+} bind def
+
+/r_hhea {
+	pop
+	<<
+		/version r_Fixed
+		/ascent r_FWord
+		/descent r_FWord
+		/lineGap r_FWord
+		/advanceWidthMax r_uFWord
+		/minLeftSideBearing r_FWord
+		/minRightSideBearing r_FWord
+		/xMaxExtent r_FWord
+		/caretSlopeRise r_int16
+		/caretSlopeRun r_int16
+		/caretOffset r_FWord
+		8 r_skip
+		/metricDataFormat r_int16
+		/numOfLongHorMetrics r_uint16
+	>>
+} bind def
+
+/w_hhea {
+	begin
+		/numOfLongHorMetrics t_hmtx /hMetrics get length def % possibly changed
+		version w_Fixed
+		ascent w_FWord
+		descent w_FWord
+		lineGap w_FWord
+		advanceWidthMax w_uFWord
+		minLeftSideBearing w_FWord
+		minRightSideBearing w_FWord
+		xMaxExtent w_FWord
+		caretSlopeRise w_int16
+		caretSlopeRun w_int16
+		caretOffset w_FWord
+		8 w_zero
+		metricDataFormat w_int16
+		numOfLongHorMetrics w_uint16
+	end
+} bind def
+
+/r_hmtx {
+	pop
+	2 dict dup begin
+		t_hhea /numOfLongHorMetrics get array
+		0 1 2 index length 1 sub {
+			1 index exch << /advanceWidth r_uint16 /leftSideBearing r_int16 >> put % longHorMetric
+		} for
+		/hMetrics exch def
+		t_maxp /numGlyphs get t_hhea /numOfLongHorMetrics get sub array
+		0 1 2 index length 1 sub {
+			1 index exch r_FWord put
+		} for
+		/leftSideBearing exch def
+	end
+} bind def
+
+/w_hmtx {
+	begin
+		hMetrics length
+		//MAX_STRING_SIZE 4 idiv % metrics per string
+		2 copy div ceiling cvi 1 add array
+		0 2 index 4 index 1 sub {
+			hMetrics 1 index 4 index 6 index 2 index sub min getinterval {
+				begin
+					advanceWidth w_uint16
+					leftSideBearing w_int16
+				end
+			} forall
+			$w closefile
+			1 index exch 3 index idiv scopy put
+			/$w sfile def
+		} for
+		3 1 roll pop pop
+		leftSideBearing {
+			w_FWord
+		} forall
+		$w closefile
+		dup dup length 1 sub scopy zeropad put % last item, padded
+	end
+	d_hmtx exch /data exch put
+} bind def
+
+/r_loca {
+	pop
+	t_maxp /numGlyphs get 1 add array % extra entry for end of last glyph
+	t_head /indexToLocFormat get 0 eq { {r_uint16 1 bitshift} }{ {r_uint32} } ifelse
+	0 1 3 index length 1 sub {
+		2 index exch 2 index exec put
+	} for
+	pop
+} bind def
+
+/w_loca {
+	t_head /indexToLocFormat get 0 eq {
+		{ -1 bitshift w_uint16 } forall
+	}{
+		$w closefile
+		dup length
+		//MAX_STRING_SIZE 4 idiv % locas per string
+		2 copy div ceiling cvi array
+		0 2 index 4 index 1 sub {
+			/$w sfile def
+			4 index 1 index 4 index 6 index 2 index sub min getinterval {
+				w_uint32
+			} forall
+			$w closefile
+			1 index exch 3 index idiv scopy put
+		} for
+		$w closefile
+		4 1 roll pop pop pop
+		d_loca exch /data exch put
+	} ifelse
+} bind def
+
+/r_maxp {
+	pop
+	<<
+		/version r_Fixed
+		/numGlyphs r_uint16
+		/maxPoints r_uint16
+		/maxContours r_uint16
+		/maxComponentPoints r_uint16
+		/maxComponentContours r_uint16
+		/maxZones r_uint16
+		/maxTwilightPoints r_uint16
+		/maxStorage r_uint16
+		/maxFunctionDefs r_uint16
+		/maxInstructionDefs r_uint16
+		/maxStackElements r_uint16
+		/maxSizeOfInstructions r_uint16
+		/maxComponentElements r_uint16
+		/maxComponentDepth r_uint16
+	>>
+} bind def
+
+/w_maxp {
+	begin
+		/numGlyphs t_glyf length def % possibly changed
+		version w_Fixed
+		numGlyphs w_uint16
+		maxPoints w_uint16
+		maxContours w_uint16
+		maxComponentPoints w_uint16
+		maxComponentContours w_uint16
+		maxZones w_uint16
+		maxTwilightPoints w_uint16
+		maxStorage w_uint16
+		maxFunctionDefs w_uint16
+		maxInstructionDefs w_uint16
+		maxStackElements w_uint16
+		maxSizeOfInstructions w_uint16
+		maxComponentElements w_uint16
+		maxComponentDepth w_uint16
+	end
+} bind def
+
+/r_name {
+	<<
+		/format r_uint16
+		/count r_uint16
+		/stringOffset r_uint16
+		/nameRecord []
+	>>
+	[
+		1 index /count get {
+			<<
+				/platformID r_uint16
+				/platformSpecificID r_uint16
+				/languageID r_uint16
+				/nameID r_uint16
+				/Length r_uint16
+				/offset r_uint16
+				/name null
+			>>
+		} repeat
+	]
+	2 copy /nameRecord exch put
+	3 -1 roll /offset get
+	2 index /stringOffset get add
+	exch {
+		begin
+			dup offset add
+			$r exch setfileposition
+			Length r_string
+			/name exch def
+		end
+	} forall
+	pop
+} bind def
+
+/r_post {
+	pop
+	<<
+		/format r_Fixed
+		/italicAngle r_Fixed
+		/underlinePosition r_FWord
+		/underlineThickness r_FWord
+		/isFixedPitch r_uint32
+		/minMemType42 r_uint32
+		/maxMemType42 r_uint32
+		/minMemType1 r_uint32
+		/maxMemType1 r_uint32
+		% skip glyph name subtable
+	>>
+} bind def
+
+/r_prep {
+	/Length get r_string % controlValueProgram
+} bind def
+
+/w_prep {
+	w_string
+} bind def
+
+% Microsoft table so use MS names, see https://www.microsoft.com/typography/otspec/os2.htm
+/r_os_2 {
+	begin
+		<<
+			/version r_uint16
+			/xAvgCharWidth r_int16
+			/usWeightClass r_uint16
+			/usWidthClass r_uint16
+			/fsType r_int16
+			/ySubscriptXSize r_int16
+			/ySubscriptYSize r_int16
+			/ySubscriptXOffset r_int16
+			/ySubscriptYOffset r_int16
+			/ySuperscriptXSize r_int16
+			/ySuperscriptYSize r_int16
+			/ySuperscriptXOffset r_int16
+			/ySuperscriptYOffset r_int16
+			/yStrikeoutSize r_int16
+			/yStrikeoutPosition r_int16
+			/sFamilyClass r_int16
+			/panose 10 r_bytes
+			/ulUnicodeRange 4 r_longs
+			/achVendID 4 r_string
+			/fsSelection r_uint16
+			/usFirstCharIndex r_uint16
+			/usLastCharIndex r_uint16
+			/sTypoAscender r_int16
+			/sTypoDescender r_int16
+			/sTypoLineGap r_int16
+			/usWinAscent r_uint16
+			/usWinDescent r_uint16
+		>> % version 0 78 bytes
+		Length 86 ge { <<
+			/ulCodePageRange 2 r_longs
+			>> { 3 copy put pop pop } forall
+		} if % version 1
+		Length 96 ge { <<
+			/sxHeight r_int16
+			/sCapHeight r_int16
+			/usDefaultChar r_uint16
+			/usBreakChar r_uint16
+			/usMaxContext r_uint16
+			>> { 3 copy put pop pop } forall
+		} if % version 2,3,4
+		Length 100 ge { <<
+			/usLowerPointSize r_uint16
+			/usUpperPointSize r_uint16
+			>> { 3 copy put pop pop } forall
+		} if % version 5
+	end
+} bind def
+
+% helpers
+
+/cid2gid_cmap0 {
+	begin 10 dict begin % use cmap dict & temporary dict
+		/$cid2gid 256 array def
+		0 % max CID
+		0 1 255 {
+			glyphIndexArray 1 index get % GID
+			dup 0 ne {
+				$cid2gid 2 index 2 index put
+				pop max
+			}{
+				pop pop
+			} ifelse
+		} for
+		1 add $cid2gid 0 3 -1 roll getinterval
+	end end
+} bind def
+
+/cid2gid_cmap2 {
+	begin 10 dict begin % use cmap dict & temporary dict
+		/$cid2gid //MAX_ARRAY_SIZE array def
+		0 % max CID
+		0 1 255 {
+			/$hi exch def
+			/$k subHeaderKeys $hi get 8 idiv def % subHeader index
+			$hi 0 eq $k 0 ne or {
+				subHeaders $k get begin
+					firstCode 1 firstCode entryCount add 1 sub {
+						/$lo exch def
+						/$cid $hi 8 bitshift $lo or def
+						$cid max
+						$lo firstCode sub firstCodeIndex add % index
+						dup 0 lt 1 index glyphIndexArray length ge or {
+							(cmap2: outside of glyphIndexArray) warning
+							pop 0
+						}{
+							glyphIndexArray exch get
+							dup 0 ne {
+								idDelta add
+							} if
+						} ifelse
+						/$gid exch 16#FFFF and def
+						$gid 0 ne {
+							$cid2gid $cid get null ne {
+								(cmap2: multiple GIDs for CID ) $cid concat2 warning
+							}{
+								$cid2gid $cid $gid put
+							} ifelse
+						} if
+					} for
+				end
+			} if
+		} for
+		1 add $cid2gid 0 3 -1 roll getinterval
+	end end
+} bind def
+
+/cid2gid_cmap4 {
+	begin 10 dict begin % use cmap dict & temporary dict
+		/$cid2gid //MAX_ARRAY_SIZE array def
+		0 % max CID
+		0 1 segCount 1 sub {
+			/$seg exch def
+			/$startCode startCode $seg get def
+			/$endCode endCode $seg get def
+			/$idDelta idDelta $seg get def
+			/$idRangeOffset idRangeOffset $seg get def
+			$seg segCount eq $endCode 16#FFFF ne and { (cmap4: last endCode not FFFF) warning } if
+			$startCode $endCode gt { (cmap4: startCode > endCode) warning } if
+			$idRangeOffset 1 and 0 ne { (cmap4: uneven idRangeOffset) warning } if
+			$startCode 16#FFFF ne $idRangeOffset 16#FFFF ne and { % not the end
+				$startCode 1 $endCode {
+					/$cid 1 index def
+					max
+					$idRangeOffset 0 ne {
+						$idRangeOffset 2 idiv $cid $startCode sub add segCount $seg sub sub % index
+						dup 0 lt 1 index glyphIndexArray length ge or {
+							(cmap4: outside of glyphIndexArray) warning
+							pop 0
+						}{
+							glyphIndexArray exch get $idDelta add
+						} ifelse
+					}{
+						$cid $idDelta add
+					} ifelse
+					/$gid exch 16#FFFF and def
+					$gid 0 ne {
+						$cid2gid $cid get null ne {
+							(cmap4: multiple GIDs for CID ) $cid concat2 warning
+						}{
+							$cid2gid $cid $gid put
+						} ifelse
+					} if
+				} for
+			} if
+		} for
+		1 add $cid2gid 0 3 -1 roll getinterval
+	end end
+} bind def
+
+/cid2gid_cmap6 {
+	begin 10 dict begin % use cmap dict & temporary dict
+		/$cid2gid //MAX_ARRAY_SIZE array def
+		0 % max CID
+		firstCode 1 firstCode entryCount add 1 sub {
+			glyphIndexArray 1 index firstCode sub get
+			dup 0 ne {
+				$cid2gid 2 index 2 index put
+				pop max
+			}{
+				pop pop
+			} ifelse
+		} for
+		1 add $cid2gid 0 3 -1 roll getinterval
+	end end
+} bind def
+
+/cid2gid_cmap12.0 { % only works for CID < 65535
+	begin 10 dict begin % use cmap dict & temporary dict
+		/$cid2gid //MAX_ARRAY_SIZE array def
+		0 % max CID
+		groups {
+			/$startCharCode 1 index /startCharCode get def
+			/$endCharCode 1 index /endCharCode get def
+			/$startGlyphCode 1 index /startGlyphCode get def
+			pop
+			$startCharCode 1 $endCharCode {
+				dup //MAX_CID le {
+					/$cid 1 index def
+					max
+					/$gid $startGlyphCode $cid $startCharCode sub add 16#FFFF and def
+					$cid2gid $cid get null ne {
+						(cmap12: multiple GIDs for CID ) $cid concat2 warning
+					}{
+						$cid2gid $cid $gid put
+					} ifelse
+				}{
+					pop
+				} ifelse
+			} for
+		} forall
+		1 add $cid2gid 0 3 -1 roll getinterval
+	end end
+} bind def
+
+% my own compact CID-GID mapper
+% makes cgmap (array of [CIDstart GID...] where GID is single or GIDstart -length range)
+/cidmap {
+	dup length
+	dup array % result
+	0 % index
+	4 2 roll
+	0 % cid
+	{
+		2 copy sub
+		dup 0 le { pop exit } if
+		{ % find gid
+			2 index 1 index get null ne { exit }{ 1 add } ifelse
+		} repeat
+		dup 1 add
+		2 index 1 index sub
+		dup 0 lt { pop pop exit } if
+		{ % find null
+			3 index 1 index get null eq { exit }{ 1 add } ifelse
+		} repeat
+		exch
+		[ exch % cid
+			4 index 1 index get % gid
+			1 index 1 add
+			dup 5 index sub % # more cids
+			dup 0 ne {
+				neg
+				-1 % -length
+				8 index 4 -2 roll getinterval {
+					dup
+					3 index 3 index sub eq {
+						pop 1 sub % continues
+					}{
+						1 index -1 eq { exch }{ -1 } ifelse % breaks
+					} ifelse
+				} forall
+				dup -1 eq { pop } if
+			}{
+				pop pop
+			} ifelse
+		]
+		5 index exch 5 index exch put
+		4 -1 roll 1 add 4 1 roll
+	} loop
+	pop pop pop
+	0 exch getinterval
+} bind def
+
+/gid2cid { % for comments
+	t_glyf length dict dup begin
+		exch
+		0 1 2 index length 1 sub {
+			2 copy get
+			dup null ne {
+				exch
+				currentdict 2 index known {
+					1 index load min % save lowest CID
+				} if
+				def
+			}{
+				pop pop
+			} ifelse
+		} for
+		pop
+	end
+} bind def
+
+/getgids {
+	2 copy known not {
+		2 copy null put
+		2 index exch get
+		dup null ne {
+			begin
+				numberOfContours 0 lt {
+					components {
+						/glyphIndex get
+						3 copy getgids
+						pop
+					} forall
+				} if
+			end
+		}{
+			pop
+		} ifelse
+	}{
+		pop
+	} ifelse
+	pop pop
+} bind def
+
+/setgids {
+	begin
+		numberOfContours 0 lt {
+			components {
+				2 copy /glyphIndex get get
+				2 copy /glyphIndex exch put
+				exch /offset get description exch w_poke16
+			} forall
+		} if
+	end
+	pop
+} bind def
+
+% make new hmtx from old gid metrics
+% takes gids
+/sethmetrics {
+	% collect hmetrics in new order
+	dup length array % collected
+	t_hmtx dup /leftSideBearing get exch /hMetrics get
+	dup length % old numOfLongHorMetrics
+	2 copy 1 sub get /advanceWidth get % last advanceWidth
+	6 -1 roll false dsort { % sort by new gid
+		aload pop exch % new old gids
+		0 max % .notdef if unmapped
+		dup 4 index lt {
+			4 index exch get
+		}{
+			3 index sub 5 index exch get
+			<< exch /leftSideBearing exch /advanceWidth 5 index >>
+		} ifelse
+		6 index 3 1 roll put
+	} forall
+	pop pop pop pop
+	% determine new numOfLongHorMetrics
+	dup length 1 sub
+	2 copy get /advanceWidth get % new last advanceWidth
+	exch dup {
+		2 index 1 index 1 sub get /advanceWidth get
+		2 index ne { exit } if
+		1 sub
+	} repeat
+	1 add exch pop
+	% new hMetrics
+	2 copy 0 exch getinterval
+	3 1 roll
+	% new leftSideBearing
+	1 index length 1 index sub getinterval
+	0 1 2 index length 1 sub {
+		2 copy get /leftSideBearing get
+		2 index 3 1 roll put
+	} for
+	% new hmtx
+	<< 3 1 roll /leftSideBearing exch /hMetrics 4 -1 roll >>
+	/t_hmtx exch def
+} bind def
+
+/remap {
+	t_glyf
+	dup length dict % old to new ids
+	% collect used gids from cmap and component glyphs
+	0 1 4 index length 1 sub {
+		3 index exch get
+		dup null ne {
+			3 copy getgids
+		} if
+		pop
+	} for
+	% assign new gids
+	dup 0 0 put % .notdef
+	dup 3 index 0 get dup null eq { pop -1 } if 1 put % .null
+	dup 3 index 13 get dup null eq { pop -2 } if 2 put % CR
+	dup 3 index 32 get dup null eq { pop -3 } if 3 put % space
+	4 % gid
+	0 1 5 index length 1 sub { % place cid mapped gids first in cid order
+		4 index 1 index get % old gid
+		dup null ne { % cid mapped
+			3 index 1 index get % new gid
+			dup null ne { % already assigned
+				exch pop
+				5 index 3 1 roll put % remap cmap
+			}{
+				pop
+				exch 5 index exch 3 index put % remap cmap
+				2 index exch 2 index put % old->new gids
+				1 add
+			} ifelse
+		}{
+			pop pop % no glyph
+		} ifelse
+	} for
+	1 index { % place component gids at end in any order
+		null eq { % component only
+			2 index exch 2 index put
+			1 add
+		}{
+			pop % cid mapped
+		} ifelse
+	} forall
+	% build new glyf array
+	array
+	1 index {
+		exch
+		dup 0 ge { % not .null
+			4 index exch get % old glyf
+			dup null ne {
+				3 copy put % new position
+				exch pop
+				2 index exch setgids
+			}{
+				pop pop % missing component gid
+			} ifelse
+		}{
+			pop pop
+		} ifelse
+	} forall
+	exch sethmetrics
+	exch pop
+	/t_glyf exch def
+} bind def
+
+/findcmap {
+	{
+		t_cmap begin % find best cmap
+			[[0 4] [0 12.0] [3 4] [3 2]] { % order [platformID format]
+				encodingSubtables {
+					begin
+						dup aload pop exch
+						platformID eq exch format eq and {
+							pop
+							currentdict
+							end end
+							stop
+						} if
+					end
+				} forall
+				pop
+			} forall
+		end
+	} stopped {
+		begin
+			d_cmap /offset get offset add
+			$r 1 index setfileposition
+			currentdict
+			(r_cmap_) format concat2 cvx exec
+			(cid2gid_cmap) format concat2 cvx exec
+		end
+	}{
+		(findcmap: failed to find suitable cmap) warning
+		[] % failed
+	} ifelse
+	/$cmap exch def % CID to GID array with holes
+} bind def
+
+/findnames {
+	/$names 8 array def % basic names, 8-bit strings where possible
+	t_name begin
+		0 1 $names length 1 sub {
+			nameRecord { % try MS
+				begin
+					dup nameID eq
+					platformID 3 eq languageID 16#FF and 9 eq and % English (16#xx09)
+					and {
+						dup name ucs2toutf8 $names 3 1 roll put end exit
+					} if
+				end
+			} forall
+			$names 1 index get null eq { % not found, try first matching name
+				nameRecord {
+					begin
+						dup nameID eq {
+%[platformID platformSpecificID languageID nameID name] ( ) concatas ==
+							platformID 1 eq platformSpecificID 0 eq and { % Mac
+								dup name $names 3 1 roll put end exit
+							} if
+							platformID 3 eq { % MS
+								dup name ucs2toutf8 $names 3 1 roll put end exit
+							} if
+						} if
+					end
+				} forall
+			} if
+			$names 1 index get null eq { % still not found
+				dup $names exch () put % no name
+			} if
+			pop
+		} for
+	end
+} bind def
+
+/checksum {
+	0 % sum
+	0 4 3 index length 1 sub {
+		2 index 1 index get 24 bitshift
+		3 index 2 index 1 add get 16 bitshift or
+		3 index 2 index 2 add get 8 bitshift or
+		exch 3 index exch 3 add get or
+		iadd32
+	} for
+	exch pop
+} bind def
+
+/searchargs {
+	begin
+		/searchRange 1 def
+		/entrySelector -4 def
+		/rangeShift 0 def
+		numTables 16 mul {
+			dup searchRange dup add le { exit } if
+			/entrySelector entrySelector 1 add def
+			/searchRange searchRange dup add def
+		} loop
+		searchRange sub
+		/rangeShift exch def
+	end
+} bind def
+
+/zeropad {
+	dup length neg 3 and % # pad bytes
+	dup 0 ne {
+		1 index length add string
+		exch 1 index copy pop
+	}{
+		pop
+	} ifelse
+} bind def
+
+/getmisc {
+	/$underlineposition underlineposition def
+	/$underlinethickness underlinethickness def
+	/$mincid mincid def
+	/$symbolfont $mincid 16#E000 ge maxcid 16#F8FF le and def % Unicode Private Use Area E000-F8FF
+	/$tascent tascent def
+} bind def
+
+/underlineposition {
+	t_post /underlinePosition get
+	dup 0 eq {
+		pop
+		t_head /yMin get 2 div
+		underlinethickness -1.5 mul
+		max
+		round cvi
+		(post: underlinePosition=0, using ) 1 index concat2 warning
+		t_post /underlinePosition 2 index put
+	} if
+} bind def
+
+/underlinethickness {
+	t_post /underlineThickness get
+	dup 0 eq {
+		pop
+		t_head /unitsPerEm get 10 div % max thickness
+		//UNDERLINE_THICKNESS_CIDS {
+			$cmap length 1 index gt {
+				$cmap exch get
+				dup null ne {
+					t_glyf exch get
+					dup null ne {
+						begin
+							xMax xMin sub
+							yMax yMin sub
+							min min
+						end
+					}{
+						pop
+					} ifelse
+				}{
+					pop
+				} ifelse
+			}{
+				pop
+			} ifelse
+		} forall
+		round cvi
+		(post: underlineThickness=0, using ) 1 index concat2 warning
+		t_post /underlineThickness 2 index put
+	} if
+} bind def
+
+/mincid {
+	0 $cmap { null ne { exit } if 1 add } forall
+} bind def
+
+/maxcid {
+	$cmap length 1 sub
+} bind def
+
+/style {
+	[(Regular) (Bold) (Italic) (Bold Italic)] t_head /macStyle get 3 and get
+} bind def
+
+% see http://www.typophile.com/node/13081
+/linespacing {
+	t_hhea begin
+		ascent descent abs add lineGap add
+	end
+} bind def
+
+/tascent {
+	$cmap (T) ord get
+	dup null ne {
+		t_glyf exch get
+		dup null ne { /yMax get }{ pop 0 } ifelse
+	}{
+		pop 0
+	} ifelse
+	dup 0 eq {
+		currentdict /t_os_2 known {
+			t_os_2 /sCapHeight known { pop t_os_2 /sCapHeight get } if
+		} if
+	} if
+	dup 0 eq {
+		pop t_head /yMax get
+	} if
+} bind def
+
+% literal code strings to include in output
+
+% binary & compressed inline reader procs
+/rb (/RB {string currentfile exch readstring pop} executeonly def) def
+/rc (/RC {1 index add exch RB /FlateDecode filter exch string readstring pop} executeonly def) def
+
+(%EOT) heredoc
+cidfont dup /CIDFontName get exch /CIDFont defineresource
+/CIDFontName get /Identity-H [2 index] composefont pop
+%EOT
+/install exch def
+
+% cmap
+(%EOT) heredoc
+/CIDInit /ProcSet findresource begin
+	10 dict begin
+		begincmap
+		/CMapType 1 def
+		/CMapName /Identity-H def
+		/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> def
+		1 begincodespacerange
+			<0000> <ffff>
+		endcodespacerange
+		0 usefont
+		1 begincidrange
+			<0000> <ffff> 0
+		endcidrange
+		endcmap
+		currentdict CMapName exch /CMap defineresource pop
+	end
+end
+%EOT
+/cmapstr exch def
+
+(%EOT) heredoc
+% makes CIDMap from cgmap for GDBytes = 1
+% cgmap is array of [CIDstart GID...] where GID is single or GIDstart -length range
+% <CIDCount> <cgmap> cidmap1 <binary string of length CIDCount>
+/cidmap1 {
+	exch string exch
+	{ % poke in gids at cid locations
+		dup 0 get exch % cid
+		dup length 1 sub 1 exch getinterval % gid ranges
+		0 % last gid
+		3 1 roll {
+			dup 0 lt {
+				2 index 1 add exch % start
+				neg 1 sub 3 index add % end
+			}{
+				dup
+			} ifelse
+			4 -1 roll pop 3 1 roll % last gid
+			1 3 index {
+				3 index exch 2 index exch put
+				1 add
+			} for % each gid
+		} forall % each gid run
+		pop pop
+	} forall % each cid range
+} bind def
+%EOT
+/cidmap1procstr exch crunchps fold80 def
+
+(%EOT) heredoc
+% makes CIDMap from cgmap for GDBytes = 2
+% cgmap is array of [CIDstart GID...] where GID is single or GIDstart -length range
+% <CIDCount> <cgmap> cidmap2 <array of 256 byte binary strings>
+/cidmap2 {
+	% make array of 256 byte strings
+	exch
+	2 mul % GDBytes
+	dup 256 div ceiling cvi array
+	0 1 2 index length 1 sub {
+		dup
+		8 bitshift 3 index exch sub 256 min string
+		2 index 3 1 roll put
+	} for % each string
+	exch pop exch
+	% poke in gids at cid locations
+	{
+		dup 0 get 2 mul exch % cid x GDBytes
+		dup length 1 sub 1 exch getinterval % gid ranges
+		0 % last gid
+		3 1 roll {
+			dup 0 lt {
+				2 index 1 add exch % start
+				neg 1 sub 3 index add % end
+			}{
+				dup
+			} ifelse
+			4 -1 roll pop 3 1 roll % last gid
+			1 3 index {
+				3 index 2 index -8 bitshift get % substring
+				2 index 16#FF and % offset
+				2 index % gid
+				dup 256 ge {
+					3 copy -8 bitshift put % MSB
+					16#FF and
+				} if
+				exch 1 add exch put % LSB
+				pop
+				2 add
+			} for % each gid
+		} forall % each gid run
+		pop pop
+	} forall % each cid range
+} bind def
+%EOT
+/cidmap2procstr exch crunchps fold80 def
+
+% stringize cidmap
+/cidmapstr {
+	dup length array
+	10 string % for cvs
+	3 -1 roll
+	0 1 2 index length 1 sub {
+		2 copy get
+		sfile
+		dup ([) writestring
+		()
+		3 -1 roll {
+			2 index 2 index writestring % space
+			2 index exch 6 index cvs writestring
+			pop ( )
+		} forall
+		pop
+		dup (]) writestring
+		closefile
+		scopy
+		4 index 3 1 roll put
+	} for
+	pop pop
+} bind def
+
+% stringize dictionary
+/dictstr {
+	2 index (<<\n) writestring
+	dup [ exch { pop cvas } forall ] {} insertionsort % sorted names
+	{
+		2 copy get exch % value key
+		4 index 4 index writestring % indent
+		4 index (\t/) writestring
+		4 index exch cvas writestring % key
+		3 index ( ) writestring
+		dup type { % case stmt
+			dup /dicttype eq {
+				pop
+				3 index
+				3 index (\t) concat2
+				3 -1 roll dictstr
+				2 index ( readonly) writestring
+				exit
+			} if
+			dup /arraytype eq {
+				pop
+				() exch
+				4 index ([) writestring
+				{
+					4 index 2 index writestring % spacing
+					4 index exch cvas writestring
+					pop ( )
+				} forall
+				pop
+				2 index (] readonly) writestring
+				exit
+			} if
+			dup /stringtype eq {
+				pop
+				3 index (\() writestring
+				3 index exch writestring
+				2 index (\)) writestring
+				exit
+			} if
+			dup /nametype eq {
+				pop
+				3 index exch (/) exch concat2 writestring
+				exit
+			} if
+			{
+				pop
+				3 index exch cvas writestring
+				exit
+			} exec
+		} loop
+		2 index (\n) writestring
+	} forall
+	pop
+	2 copy writestring
+	pop (>>) writestring
+} bind def
+
+% stringize CIDFont
+/cidfontstr {
+	sfile dup
+	() 4 -1 roll dictstr
+	closefile
+	sdata
+} bind def
+
+% Type 2 CIDFont dictionary
+/cidfont {
+<<
+	/FontInfo <<
+		/FamilyName $names 1 get
+		/Weight $names 2 get
+		/FullName $names 4 get
+		/Notice $names 0 get
+		/version $names 5 get
+		/isFixedPitch t_post /isFixedPitch get 0 ne
+		/ItalicAngle t_post /italicAngle get
+		/UnderlinePosition $underlineposition
+		/UnderlineThickness $underlinethickness
+		/extra << % other gleaned info
+			/unitsPerEm t_head /unitsPerEm get % em units
+			/isSymbolFont $symbolfont % true if all cids in Private Use Area E000-F8FF
+			/style style % Windows/Mac style
+			/lineSpacing linespacing % baseline to baseline distance
+			/Tascent $tascent % used for cap height in some apps
+		>>
+	>>
+	/CIDFontName $names 6 get cvn
+	/CIDFontType 2 % TrueType glyph descriptions
+	/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >>
+	/Encoding []
+	/FontBBox [ t_head begin xMin yMin xMax yMax end ]
+	/FontMatrix [1 0 0 1 0 0]
+	/FontType 42 % gets replaced with 11
+	/PaintType 0 % filled glyphs
+	/CharStrings << /.notdef 0 >>
+	/GDBytes $gdbytes
+	/CIDCount $cmap length
+	/CIDMap []
+	/sfnts []
+>>
+} bind def
+
+% emit sfnts string
+/sfnt {
+	dup length 0 ne {
+		binary {
+			compress {
+				/$w sfile << /CloseTarget true >> /FlateEncode filter def
+				$w 1 index writestring
+				$w 0 write % Type42 padding byte
+				$w closefile
+				dup length slength sub dup 10 ge { slength exch }{ pop dup length 0 } ifelse
+			}{
+				dup length 0
+			} ifelse
+			dup 0 ne { % compressed
+				exch
+				$t42 exch cvas writestring sp $t42 exch cvas writestring
+				$t42 ( RC ) writestring
+				$t42 sdata writestring
+				pop
+			}{ % uncompressed
+				pop
+				$t42 exch cvas writestring
+				$t42 ( RB ) writestring
+				$t42 exch writestring
+				$t42 0 write % Type42 padding byte
+			} ifelse
+		}{
+			$t42 (<) writestring
+			/$w $t42 /ASCIIHexEncode filter def
+			$w exch writestring
+			$w 0 write % Type42 padding byte
+			$w closefile
+		} ifelse
+		nl
+		$t42 flushfile
+	}{
+		pop
+	} ifelse
+} bind def
+
+/comment {
+	$t42 (% ) writestring
+	$t42 exch writestring
+	nl
+} bind def
+
+/glyfcomment {
+	t_glyf 1 index get
+	$t42 (%\t) writestring
+	% GID(s)
+	$t42 (gid=) writestring
+	$t42 2 index cvas writestring
+	begin
+		numberOfContours 0 lt {
+			$t42 ( [) writestring
+			()
+			components {
+				/glyphIndex get
+				$t42 2 index writestring
+				$t42 exch cvas writestring
+				pop ( )
+			} forall
+			pop
+			$t42 (]) writestring
+		} if
+	end
+	% CID
+	$gmap 1 index known {
+		$gmap exch get
+		sp $t42 (cid=) writestring
+		$t42 1 index cvas writestring sp
+		dup dup 16#20 gt exch 16#7F lt and {
+			$t42 exch chr writestring
+		}{
+			$t42 exch octal16 writestring
+		} ifelse
+	}{
+		pop
+	} ifelse
+	nl
+} bind def
+
+/hmtxcomment {
+	$t42 (%\t) writestring
+	dup d_hmtx /data get length 1 sub lt {
+		$t42 (hMetrics) writestring
+		d_hmtx /data get length 2 gt {
+			$t42 ( \() writestring
+			$t42 exch cvas writestring
+			$t42 (\)) writestring
+		}{
+			pop
+		} ifelse
+	}{
+		pop
+		$t42 (leftSideBearing) writestring
+	} ifelse
+	nl
+} bind def
+
+/locacomment {
+	d_loca /data get length 1 gt {
+		$t42 (%\t) writestring
+		$t42 (loca \() writestring
+		$t42 exch cvas writestring
+		$t42 (\)) writestring
+		nl
+	}{
+		pop
+	} ifelse
+} bind def
+
+% emit sfnts data
+/sfnts {
+	w_directory begin
+		comments {
+			(directory) comment
+		} if
+		data sfnt
+		$tables {
+			(d_) exch concat2 load begin
+				comments {
+					tag ( table) concat2 comment
+				} if
+				data
+				dup type /arraytype eq {
+					0 1 2 index length 1 sub {
+						2 copy get
+						dup null ne {
+							comments {
+								tag (glyf) eq { 1 index glyfcomment } if
+								tag (hmtx) eq { 1 index hmtxcomment } if
+								tag (loca) eq { 1 index locacomment } if
+							} if
+							sfnt
+						}{
+							pop
+						} ifelse
+						pop
+					} for
+					pop
+				}{
+					sfnt
+				} ifelse
+			end
+		} forall
+	end
+} bind def
+
+/process {
+	/ttf exch def
+
+	% Type42 output file or dir
+
+	/t42 where {
+		pop t42 dup isdir
+	}{
+		ttf dirname true
+	} ifelse
+	psname not and ttfs length 1 gt or {
+		[ exch dirname (/) ttf () basename (.) search { 3 1 roll pop pop } if (.t42) ] concata
+	} if
+	/t42 exch def
+
+	% parse TTF font
+
+	/$ttf ttf (r) file def % TTF input file
+
+	/$r $ttf /ReusableStreamDecode filter def % reader
+
+	r_directory
+
+	findnames % get name strings
+	findcmap % get CID map
+	getmisc % get miscellaneous data
+
+	info { information }{ convert } ifelse
+} bind def
+
+/convert {
+	% process options
+
+	subset length 0 ne { % make subset cmap
+		subset ucs2 not { utf8toutf16be } if
+		str2int16 $mincid symboloffset
+		0 1 index { max } forall 1 add $cmap length min array
+		exch {
+			1 index exch
+			$cmap length 1 index gt {
+				$cmap 1 index get put
+			}{
+				pop pop
+			} ifelse
+		} forall
+		/$cmap exch def
+	} if
+
+	optimise {
+		$cmap remap
+		/$cmap exch def
+	} if
+
+	/$gdbytes 0 $cmap { dup null ne { max }{ pop } ifelse } forall 16#100 ge { 2 }{ 1 } ifelse def
+
+	comments {
+		/$gmap $cmap gid2cid def
+	} if
+
+	% emit Type42 font
+
+	psname {
+		[ t42 dirname (/) $names 6 get (.t42) ] concata
+		/t42 exch def
+	} if
+
+	/$t42 t42 (w) file def % Type42 output file
+
+	$t42 (%!PS-TrueTypeFont) writestring nl
+	nl
+
+	$t42 $gdbytes 2 eq { cidmap2procstr }{ cidmap1procstr } ifelse writestring nl
+	nl
+	$t42 cmapstr writestring nl
+
+	$t42 (/cidfont ) writestring
+	$t42 cidfont cidfontstr writestring
+	$t42 ( def\n) writestring
+	nl
+
+	$t42 (cidfont dup /CIDMap exch /CIDCount get ) writestring
+	$t42 ([\n) writestring
+	$cmap cidmap cidmapstr { t $t42 exch writestring nl } forall
+	$t42 [ (] cidmap) $gdbytes ( readonly put\n) ] concata writestring
+	nl
+
+	binary {
+		$t42 rb writestring nl
+		compress { $t42 rc writestring nl } if
+		nl
+	} if
+
+	$t42 (cidfont /sfnts [\n) writestring
+	sfnts
+	$t42 (] readonly put\n) writestring nl
+
+	$t42 install writestring nl
+
+	$t42 closefile
+} bind def
+
+/information {
+	<<
+		/filename ttf () basename
+		/notice $names 0 get
+		/family $names 1 get
+		/subfamily $names 2 get
+		/uniqueid $names 3 get
+		/fullname $names 4 get
+		/version $names 5 get
+		/psname $names 6 get
+		/trademark $names 7 get
+		/style style
+		/issymbolfont $symbolfont
+	>> true dsort
+	userdict /$out known not {
+		systemdict /OutputFile known {
+			userdict /$out systemdict /OutputFile get (w) file put
+		}{
+			userdict /$out $stdout put
+		} ifelse
+		() 1 index { % heading
+			$out 2 index writestring
+			aload pop pop cvas $out exch writestring
+			pop (\t)
+		} forall
+		pop
+		$out (\n) writestring
+	} if
+	() exch { % values
+		$out 2 index writestring
+		aload pop cvas $out exch writestring
+		pop pop (\t)
+	} forall
+	pop
+	$out (\n) writestring
+} bind def
+
+% CLI
+
+10000000 setvmthreshold % lots of RAM
+
+% options
+/binary dup where { pop pop }{ false def } ifelse
+/compress dup where { pop pop }{ false def } ifelse
+/comments dup where { pop pop }{ false def } ifelse
+/optimise dup where { pop pop }{ false def } ifelse
+/subset dup where { pop pop }{ () def } ifelse
+/ucs2 dup where { pop pop }{ false def } ifelse
+/psname dup where { pop pop }{ false def } ifelse
+/info dup where { pop pop }{ false def } ifelse
+compress { /binary true def } if
+subset length 0 ne { /optimise true def } if
+
+/t { $t42 9 write } bind def % tab
+/sp { $t42 32 write } bind def % space
+/nl { $t42 10 write } bind def % newline
+
+% TTF input file(s)
+
+/ttf where {
+	pop
+	ttf isdir {
+		/ttfs [
+			[ (*.ttf) (*.TTF) (*.otf) (*.OTF) ] {
+				ttf exch concat2 { dup length string copy } 1000 string filenameforall
+			} forall
+		] def
+	}{
+		ttf isfile {
+			/ttfs [ ttf ] def
+		}{
+			(no TTF file: ) ttf concat2 error
+		} ifelse
+	} ifelse
+}{
+	(no TTF file: use -sttf=file.ttf or -sttf=dir/) error
+} ifelse
+
+% sort filenames
+
+/ttfs <<
+	ttfs {
+		dup tolower exch
+	} forall
+>> true dsort def
+
+% process
+
+ttfs {
+	1 get
+	dup () basename notice
+	{
+		100 dict begin
+			process
+		end
+	} stopped {
+		clear
+		cleardictstack
+		$error /newerror get {
+			$error /command get error
+		} if
+	} if
+	1 vmreclaim % do local VM gc
+	%vmstatus warning warning pop
+} forall % each TTF
+
+userdict /$out known {
+	$out closefile
+} if
+
