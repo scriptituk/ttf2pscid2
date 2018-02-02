@@ -53,8 +53,8 @@ Examples:
   converts arial.ttf to say ArialMT.t42 where ArialMT is the PostScript font name given in arial.ttf
 * `gs -q -o- -dNODISPLAY -sttf=arial.ttf -doptimise -dcompress ttf2pscid2.ps`  
   compacts and compresses to produce the smallest output file
-* `gs -q -o- -dNODISPLAY -sttf=arial.ttf -dsubset='Fee €25 (£22)' ttf2pscid2.ps`  
-  subsets arial.ttf to contain UTF-8 characters ' Fe25()£€' only
+* `gs -q -o- -dNODISPLAY -sttf=arial.ttf -dsubset='Fee: €25 (£22)' ttf2pscid2.ps`  
+  subsets arial.ttf to contain UTF-8 characters ' ():25Fe£€' only (10 CIDs)
 * `gs -q -o info.txt -dNODISPLAY -sttf=arialbd.ttf -dinfo ttf2pscid2.ps`  
   writes font information for arialbd.ttf to info.txt, e.g. (tabs shown as |):  
   `family|filename|fullname|issymbolfont|notice|psname|style|subfamily|trademark|uniqueid|version`  
