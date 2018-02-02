@@ -43,6 +43,7 @@ subset () ne { /optimise true def } if
 (sort.ps) include
 (math.ps) include
 
+% messaging
 /$stdout (%stdout)(w) file def
 /$stderr (%stderr)(w) file def
 /notice { $stdout dup dup 4 -1 roll writestring (\n) writestring flushfile } bind def
@@ -337,9 +338,9 @@ subset () ne { /optimise true def } if
 		pop
 		userdict begin
 			/cff exch def % raw CFF data chunks
-%			(ttf2type42-cff.ps) include % CFF parsing
+%			(cff.ps) include % CFF parsing
 		end
-false {
+false { % not the CFF solution - install as Type 2 (CFF) base font and add CID layer
 		$r offset setfileposition
 		<<
 			% Header
