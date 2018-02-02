@@ -1,5 +1,5 @@
 # ttf2pscid2
-### TTF to PostScript Type 2 CIDFont converter
+### TTF to PostScript Type 2 CIDFont Converter
 
 This Ghostscript-run script converts TTF to a Type 2 CIDFont with 2-byte Unicode CMap encoding, for embedding into PostScript directly as CMap and CIDFont dictionaries, not as Adobe conformant CID-keyed font files.
 
@@ -10,7 +10,7 @@ The TrueType font is wrapped in PostScript syntax as sfnts binary data as for Ty
 Subsetting is supported. OpenType/TTF is supported but not OpenType/CFF as yet nor TrueType Collections. Vertical writing mode is not yet supported.
 
 Basic Multilingual Plane only.  
-Depends on [postscript-procs](https://github.com/scriptituk/postscript-procs) files string.ps, file.ps, sort.ps & math.ps.  
+Depends on [pslutils](https://github.com/scriptituk/pslutils) files string.ps, file.ps, sort.ps & math.ps.  
 Tested on GhostScript v8.7 to v9.22.
 
 Usage:
@@ -33,7 +33,7 @@ Options are set using Ghostscript parameter switches (`-d` for definitions and `
   a trailing slash enumerates all files with .ttf or .otf extensions in the specified directory
 * `-st42=file` and `-st42=dir/` sets the output filename or directory  
   the default output directory is the same as the TTF
-* `-sinc=dir` sets the include path for [postscript-procs](https://github.com/scriptituk/postscript-procs) dependencies
+* `-sinc=dir` sets the include path for [pslutils](https://github.com/scriptituk/pslutils) dependencies
 * `-dpsname` sets the output basename to the PostScript font name contained in the TTF `name` table
 * `-doptimise` remaps the glyph index numbering to produce a more compact CIDMap and hence smaller output file
 * `-ssubset=chars` subsets the font to the given UTF-8 characters and sets `-doptimise`
