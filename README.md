@@ -36,12 +36,13 @@ Options are set using Ghostscript parameter switches (`-d` for definitions and `
 * `-sinc=dir` sets the include path for [postscript-procs](https://github.com/scriptituk/postscript-procs) dependencies
 * `-dpsname` sets the output basename to the PostScript font name contained in the TTF `name` table
 * `-doptimise` remaps the glyph index numbering to produce a more compact CIDMap and hence smaller output file
-* `-dsubset=chars` subsets the font to the given UTF-8 characters and sets `-doptimise`
+* `-ssubset=chars` subsets the font to the given UTF-8 characters and sets `-doptimise`
 * `-ducs2` interprets the subset characters as 16 bit UCS-2 (UTF-16BE BMP) instead of UTF-8
 * `-dbinary` saves sfnts as binary data instead of ASCII hexadecimal
 * `-dcompress` saves long sfnts strings as zlib/deflate compressed binary data instead of uncompressed and sets `-dbinary`
 * `-dcomments` comments the sfnts strings for debugging
 * `-dinfo` outputs tab-separated font information to the gs output file specified by -sOutputFile= or -o
+* `-sargs=file` runs the given file formatted as a PostScript dictionary defining the required options
 
 Examples:
 * `gs -q -o- -dNODISPLAY -sttf=times.ttf -st42=times.ps ttf2pscid2.ps`  
@@ -60,3 +61,11 @@ Examples:
   writes font information for arialbd.ttf to info.txt, e.g. (tabs shown as |):  
   `family|filename|fullname|issymbolfont|notice|psname|style|subfamily|trademark|uniqueid|version`  
  ` Arial|arialbd.ttf|Arial Bold|false|© 2008 The Monotype Corporation.|Arial-BoldMT|Bold|Bold|Arial is a  trademark…|Monotype:Arial Bold v5.06|5.06`
+* `gs -q -o- -dNODISPLAY -sargs=args.def ttf2pscid2.ps`  
+  reads the options from file args.def (in valid PostScript syntax), e.g.:  
+  `/subset (Fee: €25 (£22))`  
+  `/psname true`  
+  `/optimise true`  
+  `/compress true`  
+  `/ttf (arial.ttf)`
+  
