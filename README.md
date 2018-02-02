@@ -42,7 +42,7 @@ Options are set using Ghostscript parameter switches (`-d` for definitions and `
 * `-dcompress` saves long sfnts strings as zlib/deflate compressed binary data instead of uncompressed and sets `-dbinary`
 * `-dcomments` comments the sfnts strings for debugging
 * `-dinfo` outputs tab-separated font information to the gs output file specified by -sOutputFile= or -o
-* `-sargs=file` runs the given file formatted as a PostScript dictionary defining the required options
+* `-sargs=file` runs the given PostScript file of dictionary key/value pairs defining the required options, which take precedence
 
 Examples:
 * `gs -q -o- -dNODISPLAY -sttf=times.ttf -st42=times.ps ttf2pscid2.ps`  
