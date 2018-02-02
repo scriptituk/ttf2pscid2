@@ -14,19 +14,19 @@ Depends on [postscript-procs](https://github.com/scriptituk/postscript-procs) fi
 Tested on GhostScript v8.7 to v9.22.
 
 Usage:
-* `gs -dQUIET -dNODISPLAY -dBATCH -dNOPAUSE <options> -sttf=<ttf> ttf2pscid2.ps`
+* `gs -dQUIET -dNODISPLAY -dBATCH -dNOPAUSE <options> ttf2pscid2.ps`
 
 or simply  
 
-* `gs -q -o- -dNODISPLAY <options> -sttf=<ttf> ttf2pscid2.ps`
+* `gs -q -o- -dNODISPLAY <options> ttf2pscid2.ps`
 
 e.g.
 
-* `gs -q -o- -dNODISPLAY -sttf=stencil.ttf ttf2pscid2.ps`  
+* `gs -q -o- -dNODISPLAY -sttf=arial.ttf ttf2pscid2.ps`  
   converts arial.ttf to arial.t42, the .t42 extension indicates Type 42 derived PostScript code
 
-then insert the generated code into your PostScript file and use  
-* `/ArialMT 10 selectfont (Hello) show` or similar to scale and set the current font and Paint glyphs for 'Hello'.
+then insert the generated code into a PostScript file and use it as normal, e.g.:
+* `/ArialMT 10 selectfont (Hello) show` to scale and set the current font and Paint glyphs for 'Hello'.
 
 Options are set using Ghostscript parameter switches (`-d` for definitions and `-s` for strings)
 * `-sttf=file` and `-sttf=dir/` sets the TTF file(s) to convert  
@@ -65,7 +65,6 @@ Examples:
   reads the options from file args.def (in valid PostScript syntax), e.g.:  
   `/subset (Fee: €25 (£22))`  
   `/psname true`  
-  `/optimise true`  
-  `/compress true`  
+  `/optimise true /compress true`  
   `/ttf (arial.ttf)`
   
