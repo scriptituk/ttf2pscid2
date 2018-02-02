@@ -2,15 +2,9 @@
 
 % TTF to CID-keyed font converter by Raymond Luckhurst, scriptit.co.uk
 %
-% Converts TTF to a Type 2 CIDFont with 2-byte Unicode CMap encoding,
-% for embedding into PostScript directly as CMap and CIDFont dictionaries,
-% not as Adobe conformant CID-keyed font files.
-% The TrueType font is wrapped in PostScript syntax as sfnts binary data
-% as for Type 42 base fonts. The CIDMap is compacted to reduce file size
-% and command line options offer further compression. Subsetting is supported.
-% OpenType/CFF is not yet supported but OpenType/TTF is.
+% Converts TTF to a Type 2 CIDFont with 2-byte Unicode CMap encoding, for embedding into PostScript.
 %
-% Basic Multilingual Plane only.
+% See https://github.com/scriptituk/ttf2pscid2/blob/master/README.md for Documentation.
 %
 % Based on Apple's TrueType Reference Manual
 % see https://developer.apple.com/fonts/TrueType-Reference-Manual
@@ -33,6 +27,7 @@
 /compress dup where { pop pop }{ false def } ifelse
 /comments dup where { pop pop }{ false def } ifelse
 /info dup where { pop pop }{ false def } ifelse
+/args dup where { pop pop << args run >> { def } forall }{ () def } ifelse
 compress { /binary true def } if
 subset () ne { /optimise true def } if
 
@@ -44,8 +39,8 @@ subset () ne { /optimise true def } if
 (math.ps) include
 
 % messaging
-/$stdout (%stdout)(w) file def
-/$stderr (%stderr)(w) file def
+/$stdout (%stdout) (w) file def
+/$stderr (%stderr) (w) file def
 /notice { $stdout dup dup 4 -1 roll writestring (\n) writestring flushfile } bind def
 /warning { [ exch (WARNING ) exch (\n) ] concata $stderr exch writestring $stderr flushfile } bind def
 /error { [ exch (ERROR ) exch (\n) ] concata $stderr exch writestring $stderr flushfile stop } bind def
@@ -2067,3 +2062,5 @@ ttfs {
 userdict /$out known {
 	$out closefile
 } if
+
+% END Of FILE
