@@ -23,8 +23,21 @@
 % t_ table data
 % $ variables
 
-/include { inc dup length 2 index length add string dup dup 5 2 roll copy length exch putinterval run } bind def
+% options
+/inc dup where { pop pop }{ () def } ifelse
+/psname dup where { pop pop }{ false def } ifelse
+/optimise dup where { pop pop }{ false def } ifelse
+/subset dup where { pop pop }{ () def } ifelse
+/ucs2 dup where { pop pop }{ false def } ifelse
+/binary dup where { pop pop }{ false def } ifelse
+/compress dup where { pop pop }{ false def } ifelse
+/comments dup where { pop pop }{ false def } ifelse
+/info dup where { pop pop }{ false def } ifelse
+compress { /binary true def } if
+subset () ne { /optimise true def } if
 
+% dependencies
+/include { inc dup length 2 index length add string dup dup 5 2 roll copy length exch putinterval run } bind def
 (string.ps) include
 (file.ps) include
 (sort.ps) include
@@ -1997,18 +2010,6 @@ end
 
 10000000 setvmthreshold % lots of RAM
 
-% options
-/binary dup where { pop pop }{ false def } ifelse
-/compress dup where { pop pop }{ false def } ifelse
-/comments dup where { pop pop }{ false def } ifelse
-/optimise dup where { pop pop }{ false def } ifelse
-/subset dup where { pop pop }{ () def } ifelse
-/ucs2 dup where { pop pop }{ false def } ifelse
-/psname dup where { pop pop }{ false def } ifelse
-/info dup where { pop pop }{ false def } ifelse
-compress { /binary true def } if
-subset length 0 ne { /optimise true def } if
-
 /t { $t42 9 write } bind def % tab
 /sp { $t42 32 write } bind def % space
 /nl { $t42 10 write } bind def % newline
@@ -2065,4 +2066,3 @@ ttfs {
 userdict /$out known {
 	$out closefile
 } if
-
