@@ -1,15 +1,15 @@
 # ttf2pscid2
 ### TTF to PostScript Type 2 CIDFont Converter
 
-This Ghostscript-run script converts TTF to a Type 2 CIDFont with 2-byte Unicode CMap encoding, for embedding into PostScript directly as CMap and CIDFont dictionaries, not as Adobe conformant CID-keyed font files.
+This Ghostscript-run script converts TTF to Type 2 CIDFont with 2-byte Unicode CMap encoding, for embedding into PostScript directly as CMap and CIDFont PostScript dictionaries.
 
-PostScript is an excellent language for parsing binary file formats efficiently. This is a pure PostScript program but uses Ghostscript switches for convenience to pass in parameters. There are other and better TTF to PS converters around, notably [FontForge scripting](https://fontforge.github.io/scripting.html), [ttftotype42](https://github.com/kohler/lcdf-typetools) (maintained) and [ttftot42](https://github.com/nih-at/ttftot42) (dead), but the simple solution here only requires Ghostscript to run, no compilation.
+PostScript is an excellent language for parsing binary file formats efficiently. This is a pure PostScript program but uses Ghostscript switches for convenience to pass in parameters. Other and better TTF to PS converters exist, notably [FontForge scripting](https://fontforge.github.io/scripting.html), [ttftotype42](https://github.com/kohler/lcdf-typetools) (maintained) and [ttftot42](https://github.com/nih-at/ttftot42) (dead), but the simple solution here only requires Ghostscript to run without any compilation. Being a Unicode CID-keyed font, rendered text strings are just 2 byte UTF-16 for which UTF-8 conversion is included.
 
-The TrueType font is wrapped in PostScript syntax as sfnts binary data as for Type 42 base fonts. The CIDMap is compacted to reduce file size and command line options offer further compression.
+The TrueType font is wrapped in PostScript syntax as `sfnts` binary data as for Type 42 base fonts. The CIDMap is compacted to reduce file size and command line options offer further compression.
 
 Subsetting is supported. OpenType/TTF is supported but not OpenType/CFF as yet nor TrueType Collections. Vertical writing mode is not yet supported.
 
-Basic Multilingual Plane only.  
+Basic Multilingual Plane only; surrogate pairs for supplementary characters show as `.notdef`.  
 Depends on [pslutils](https://github.com/scriptituk/pslutils) files string.ps, file.ps, sort.ps & math.ps.  
 Tested on GhostScript v8.7 to v9.22.
 
@@ -38,9 +38,9 @@ Options are set using Ghostscript parameter switches (`-d` for definitions and `
 * `-doptimise` remaps the glyph index numbering to produce a more compact CIDMap and hence smaller output file
 * `-ssubset=chars` subsets the font to the given UTF-8 characters and sets `-doptimise`
 * `-ducs2` interprets the subset characters as 16 bit UCS-2 (UTF-16BE BMP) instead of UTF-8
-* `-dbinary` saves sfnts as binary data instead of ASCII hexadecimal
-* `-dcompress` saves long sfnts strings as zlib/deflate compressed binary data instead of uncompressed and sets `-dbinary`
-* `-dcomments` comments the sfnts strings for debugging
+* `-dbinary` saves `sfnts` as binary data instead of ASCII hexadecimal
+* `-dcompress` saves long `sfnts` strings as zlib/deflate compressed binary data instead of uncompressed and sets `-dbinary`
+* `-dcomments` comments the `sfnts` strings for debugging
 * `-dinfo` outputs tab-separated font information to the gs output file specified by -sOutputFile= or -o
 * `-sargs=file` runs the given PostScript file of dictionary key/value pairs defining the required options, which take precedence
 
