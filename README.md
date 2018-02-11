@@ -29,7 +29,7 @@ e.g.
   converts arial.ttf to arial.t42, the .t42 extension indicates Type 42 derived PostScript code
 
 then insert the generated code into a PostScript file and use it as normal, e.g.:
-* `/ArialMT 10 selectfont (Hello) show` to scale and set the current font and Paint glyphs for 'Hello'.
+* `/ArialMT 10 selectfont` to scale and select the font.
 
 Options are set using Ghostscript parameter switches (`-d` for definitions and `-s` for strings)
 * `-sttf=file` and `-sttf=dir/` sets the TTF file(s) to convert  
