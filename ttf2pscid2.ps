@@ -27,6 +27,7 @@
 /compress dup where { pop pop }{ false def } ifelse
 /comments dup where { pop pop }{ false def } ifelse
 /info dup where { pop pop }{ false def } ifelse
+/json dup where { exch get ("inc":") search { pop pop (") search pop /inc exch def pop } if pop }{ () def } ifelse
 /args dup where { pop pop << args run >> { def } forall }{ () def } ifelse
 compress { /binary true def } if
 subset () ne { /optimise true def } if
@@ -37,6 +38,7 @@ subset () ne { /optimise true def } if
 (file.ps) include
 (sort.ps) include
 (math.ps) include
+json jsondecode { def } forall % JSON args
 
 % messaging
 /$stdout (%stdout) (w) file def
