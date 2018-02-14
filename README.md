@@ -36,7 +36,6 @@ Options are set using Ghostscript parameter switches (`-d` for definitions and `
   a trailing slash enumerates all files with .ttf or .otf extensions in the specified directory
 * `-st42=file` and `-st42=dir/` sets the output filename or directory  
   the default output directory is the same as the TTF
-* `-sinc=dir` sets the include path for [pslutils](https://github.com/scriptituk/pslutils) dependencies
 * `-dpsname` sets the output basename to the PostScript font name contained in the TTF `name` table
 * `-doptimise` remaps the glyph index numbering to produce a more compact CIDMap and hence smaller output file
 * `-ssubset=chars` subsets the font to the given UTF-8 characters and sets `-doptimise`
@@ -45,7 +44,11 @@ Options are set using Ghostscript parameter switches (`-d` for definitions and `
 * `-dcompress` saves long `sfnts` strings as zlib/deflate compressed binary data instead of uncompressed and sets `-dbinary`
 * `-dcomments` comments the `sfnts` strings for debugging
 * `-dinfo` outputs tab-separated font information to the gs output file specified by -sOutputFile= or -o
-* `-sargs=file` runs the given PostScript file of dictionary key/value pairs defining the required options, which take precedence
+* `-sinc=dir` sets the include path for [pslutils](https://github.com/scriptituk/pslutils) dependencies
+* `-sargs=file` runs the given PostScript file of dictionary key/value pairs defining the required options
+* `-sjson=string` decodes the given JSON encoded object of key/value pairs defining the required options
+
+The `json` string takes precedence over the `args` file which takes precedence over other parameters.
 
 ### Examples:
 
@@ -71,6 +74,9 @@ Options are set using Ghostscript parameter switches (`-d` for definitions and `
   `/psname true`  
   `/optimise true /compress true`  
   `/ttf (arial.ttf)`
+* `gs -q -o- -dNODISPLAY -sjson='{"ttf":"arial.ttf","subset":"Fee: €25 (£22)","compress":true}' ttf2pscid2.ps`  
+  is JSON equivalent to  
+  `gs -q -o- -dNODISPLAY -sttf=arial.ttf -ssubset='Fee: €25 (£22)' -dcompress ttf2pscid2.ps`
 
 ### Sample
 
