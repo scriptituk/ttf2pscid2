@@ -36,7 +36,6 @@
 /info dup where { pop pop }{ false def } ifelse
 /inc dup where { pop pop }{ () def } ifelse
 /json dup where { exch get ("inc":") search { pop pop (") search pop /inc exch def pop } if pop }{ () def } ifelse
-/args dup where { pop pop << args run >> { def } forall }{ () def } ifelse
 inc () ne { inc dup length 1 sub 1 getinterval (/) ne { /inc inc (/) cat def } if } if % dir/
 
 % dependencies
