@@ -45,10 +45,7 @@ Options are set using Ghostscript parameter switches (`-d` for definitions and `
 * `-dcomments` comments the `sfnts` strings for debugging
 * `-dinfo` outputs tab-separated font information to the gs output file specified by -sOutputFile= or -o
 * `-sinc=dir` sets the include path for [pslutils](https://github.com/scriptituk/pslutils) dependencies
-* `-sargs=file` runs the given PostScript file of dictionary key/value pairs defining the required options
-* `-sjson=string` decodes the given JSON encoded object of key/value pairs defining the required options
-
-The `json` string takes precedence over the `args` file which takes precedence over other parameters.
+* `-sjson=string` decodes the given JSON encoded object of key/value pairs defining the required options, which take precedence
 
 ### Examples:
 
@@ -68,12 +65,6 @@ The `json` string takes precedence over the `args` file which takes precedence o
   writes font information for arialbd.ttf to info.txt, e.g. (tabs shown as |):  
   `family|filename|fullname|issymbolfont|notice|psname|style|subfamily|trademark|uniqueid|version`  
  ` Arial|arialbd.ttf|Arial Bold|false|© 2008 The Monotype Corporation.|Arial-BoldMT|Bold|Bold|Arial is a  trademark…|Monotype:Arial Bold v5.06|5.06`
-* `gs -q -o- -dNODISPLAY -sargs=args.def ttf2pscid2.ps`  
-  reads the options from file args.def (in valid PostScript syntax), e.g.:  
-  `/subset (Fee: €25 (£22))`  
-  `/psname true`  
-  `/optimise true /compress true`  
-  `/ttf (arial.ttf)`
 * `gs -q -o- -dNODISPLAY -sjson='{"ttf":"arial.ttf","subset":"Fee: €25 (£22)","compress":true}' ttf2pscid2.ps`  
   is JSON equivalent to  
   `gs -q -o- -dNODISPLAY -sttf=arial.ttf -ssubset='Fee: €25 (£22)' -dcompress ttf2pscid2.ps`
