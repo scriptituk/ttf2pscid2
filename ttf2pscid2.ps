@@ -17,6 +17,14 @@
 % t_ table data
 % $ variables
 
+% std I/O
+/$stdout (%stdout) (w) file def
+/$stderr (%stderr) (w) file def
+
+% temp
+/cat { exch dup length 2 index length add string dup dup 5 2 roll copy length exch putinterval } def
+/error { $stderr exch (ERROR ) exch cat (\n) cat writestring $stderr flushfile quit } def
+
 % options
 /psname dup where { pop pop }{ false def } ifelse
 /optimise dup where { pop pop }{ false def } ifelse
@@ -29,9 +37,10 @@
 /inc dup where { pop pop }{ () def } ifelse
 /json dup where { exch get ("inc":") search { pop pop (") search pop /inc exch def pop } if pop }{ () def } ifelse
 /args dup where { pop pop << args run >> { def } forall }{ () def } ifelse
+inc () ne { inc dup length 1 sub 1 getinterval (/) ne { /inc inc (/) cat def } if } if % dir/
 
 % dependencies
-/include { inc dup length 2 index length add string dup dup 5 2 roll copy length exch putinterval run } bind def
+/include { inc exch cat dup status { pop pop pop pop run }{ (inc? need ) exch cat error } ifelse } bind def
 (string.ps) include
 (file.ps) include
 (sort.ps) include
@@ -41,8 +50,6 @@ compress { /binary true def } if
 subset () ne { /optimise true def } if
 
 % messaging
-/$stdout (%stdout) (w) file def
-/$stderr (%stderr) (w) file def
 /notice { $stdout dup dup 4 -1 roll writestring (\n) writestring flushfile } bind def
 /warning { [ exch (WARNING ) exch (\n) ] concata $stderr exch writestring $stderr flushfile } bind def
 /error { [ exch (ERROR ) exch (\n) ] concata $stderr exch writestring $stderr flushfile stop } bind def
