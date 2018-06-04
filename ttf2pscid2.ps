@@ -35,7 +35,16 @@
 /comments dup where { pop pop }{ false def } ifelse
 /info dup where { pop pop }{ false def } ifelse
 /inc dup where { pop pop }{ () def } ifelse
-/json dup where { pop pop }{ () def } ifelse
+
+/json () def
+% NOTE (gs v9): octal escape double quotes, e.g. gs [options] -- file.ps '({\042name\042:true})'
+mark shellarguments pop counttomark 1 ge { % JSON string follows
+	token {
+		dup type /stringtype eq {
+			/json exch def
+		} if
+	} if
+} if cleartomark
 
 json ("inc":") search { % has inc
 	pop pop (") search pop exch pop exch pop % extract inc
