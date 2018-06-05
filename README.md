@@ -5,15 +5,15 @@
 
 This Ghostscript-run script converts TTF to Type 2 CIDFont with 2-byte Unicode CMap encoding, for embedding into PostScript directly as CMap and CIDFont PostScript dictionaries.
 
-PostScript is an excellent language for parsing binary file formats efficiently. This is a pure PostScript program but uses Ghostscript switches for convenience to pass in parameters. Other and better TTF to PS converters exist, notably [FontForge scripting](https://fontforge.github.io/scripting.html), [ttftotype42](https://github.com/kohler/lcdf-typetools) (maintained) and [ttftot42](https://github.com/nih-at/ttftot42) (dead), but the simple solution here only requires Ghostscript to run without any compilation. Being a Unicode CID-keyed font, rendered text strings are just 2 byte UTF-16 for which UTF-8 conversion is included.
+PostScript is an excellent language for parsing binary file formats efficiently. This is a pure PostScript program but uses Ghostscript switches for convenience to pass in parameters. Other and better TTF to PS converters exist, notably [FontForge scripting](https://fontforge.github.io/scripting.html), [ttftotype42](https://github.com/kohler/lcdf-typetools) (maintained) and [ttftot42](https://github.com/nih-at/ttftot42) (dead), but the simple solution here only requires Ghostscript to run, no compilation is involved. Being a Unicode CID-keyed font, rendered text strings are just 2 byte UTF-16 for which UTF-8 conversion is included.
 
 The TrueType font is wrapped in PostScript syntax as `sfnts` binary data as for Type 42 base fonts. The CIDMap is compacted to reduce file size and command line options offer further compression.
 
-Subsetting is supported. OpenType/TTF is supported but not OpenType/CFF as yet nor TrueType Collections. Vertical writing mode is not yet supported.
+Subsetting is supported. OpenType/TTF is supported but not OpenType/CFF as yet nor TrueType Collections. Vertical writing mode is not supported.
 
 Basic Multilingual Plane only; surrogate pairs for supplementary characters show as `.notdef`.  
 Depends on [pslutils](https://github.com/scriptituk/pslutils) files string.ps, file.ps, sort.ps & math.ps.  
-Tested on GhostScript v8.7 to v9.22.
+Tested on GhostScript v8.7 to v9.23.
 
 ### Usage:
 
@@ -23,6 +23,10 @@ or simply
 
 * `gs -q -o- -dNODISPLAY <options> ttf2pscid2.ps`
 
+or (recommended)
+
+* `gs -q -o- -dNODISPLAY ttf2pscid2.ps '(JSON options)'`
+
 e.g.
 
 * `gs -q -o- -dNODISPLAY -sttf=arial.ttf ttf2pscid2.ps`  
@@ -31,7 +35,7 @@ e.g.
 then insert the generated code into a PostScript file and use it as normal, e.g.:
 * `/ArialMT 10 selectfont` to scale and select the font.
 
-Options are set using Ghostscript parameter switches (`-d` for definitions and `-s` for strings)
+Options may be set using Ghostscript parameter switches (`-d` for definitions and `-s` for strings):
 * `-sttf=file` and `-sttf=dir/` sets the TTF file(s) to convert  
   a trailing slash enumerates all files with .ttf or .otf extensions in the specified directory
 * `-st42=file` and `-st42=dir/` sets the output filename or directory  
@@ -45,7 +49,10 @@ Options are set using Ghostscript parameter switches (`-d` for definitions and `
 * `-dcomments` comments the `sfnts` strings for debugging
 * `-dinfo` outputs tab-separated font information to the gs output file specified by -sOutputFile= or -o
 * `-sinc=dir` sets the include path for [pslutils](https://github.com/scriptituk/pslutils) dependencies
-* `-sjson=string` decodes the given JSON encoded object of key/value pairs defining the required options, which take precedence
+
+Options may also be JSON-encoded and passed as a PostScript string token enclosed in parenthesis. The supplied JSON-encoded object of key/value pairs defines the required options as described above and take precedence over parameter switches. PostScript string literals require the 3 special characters ( ) \ t to be escaped with a backslash (but balanced pairs of parentheses need not be escaped). This PostScript-escaping must be done on the JSON-encoded string. Final shell-escaping is also necessary.
+
+Note that GhostScript version 9.23 strips doubequote characters from passed in parameters. To pass in " use the \042 bash octal escape sequence. This is especially necessary for JSON arguments.
 
 ### Examples:
 
@@ -65,8 +72,8 @@ Options are set using Ghostscript parameter switches (`-d` for definitions and `
   writes font information for arialbd.ttf to info.txt, e.g. (tabs shown as |):  
   `family|filename|fullname|issymbolfont|notice|psname|style|subfamily|trademark|uniqueid|version`  
  ` Arial|arialbd.ttf|Arial Bold|false|© 2008 The Monotype Corporation.|Arial-BoldMT|Bold|Bold|Arial is a  trademark…|Monotype:Arial Bold v5.06|5.06`
-* `gs -q -o- -dNODISPLAY -sjson='{"ttf":"arial.ttf","subset":"Fee: €25 (£22)","compress":true}' ttf2pscid2.ps`  
-  is JSON equivalent to  
+* `gs -q -o- -dNODISPLAY ttf2pscid2.ps '({"ttf":"arial.ttf","subset":"Fee: €25 \(£22\)","compress":true})'`  
+  is the JSON equivalent of  
   `gs -q -o- -dNODISPLAY -sttf=arial.ttf -ssubset='Fee: €25 (£22)' -dcompress ttf2pscid2.ps`
 
 ### Sample
