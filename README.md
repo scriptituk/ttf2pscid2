@@ -50,7 +50,7 @@ Options may be set using Ghostscript parameter switches (`-d` for definitions an
 * `-dinfo` outputs tab-separated font information to the gs output file specified by -sOutputFile= or -o
 * `-sinc=dir` sets the include path for [pslutils](https://github.com/scriptituk/pslutils) dependencies
 
-Options may also be JSON-encoded and passed as a PostScript string token enclosed in parenthesis. The supplied JSON-encoded object of key/value pairs defines the required options as described above and take precedence over parameter switches. PostScript string literals require the 3 special characters ( ) \ t to be escaped with a backslash (but balanced pairs of parentheses need not be escaped). This PostScript-escaping must be done on the JSON-encoded string. Final shell-escaping is also necessary.
+Options may also be JSON-encoded and passed as a PostScript string token enclosed in parenthesis. The supplied JSON-encoded object of key/value pairs defines the required options as described above and take precedence over parameter switches. PostScript string literals require the 3 special characters ( ) \ to be escaped with a backslash (but balanced pairs of parentheses need not be escaped). This PostScript-escaping must be done on the JSON-encoded string. Final shell-escaping is also necessary.
 
 Note that GhostScript version 9.23 strips doubequote characters from passed in parameters. To pass in " use the \042 bash octal escape sequence. This is especially necessary for JSON arguments.
 
