@@ -1380,10 +1380,10 @@ false { % not the CFF solution - install as Type 2 (CFF) base font and add CID l
 /checksum {
 	0 % sum
 	0 4 3 index length 1 sub {
-		2 index 1 index get 24 bitshift
-		3 index 2 index 1 add get 16 bitshift or
-		3 index 2 index 2 add get 8 bitshift or
-		exch 3 index exch 3 add get or
+		0 exch
+		3 index exch 4 getinterval {
+			exch 8 bitshift or
+		} forall
 		iadd32
 	} for
 	exch pop
