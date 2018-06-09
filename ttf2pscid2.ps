@@ -1578,7 +1578,7 @@ end
 	dup 256 div ceiling cvi array
 	0 1 2 index length 1 sub {
 		dup
-		8 bitshift 3 index exch sub 256 min string
+		8 bitshift 3 index exch sub dup 256 gt { pop 256 } if string
 		2 index 3 1 roll put
 	} for % each string
 	exch pop exch
