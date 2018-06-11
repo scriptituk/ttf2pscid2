@@ -230,6 +230,7 @@ or emit UTF-8 text like…
 /Marlborough 100 selectfont
 100 100 moveto
 (Hello World) utf8toutf16be show
-showpage```
+showpage
+```
 
 Easy!
