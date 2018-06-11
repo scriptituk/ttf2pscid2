@@ -223,4 +223,13 @@ then emit UTF-16 text like…
 showpage
 ```
 
+or emit UTF-8 text like…
+
+```postscript
+% include the code for utf8toutf16be from file string.ps in repository pslutils
+/Marlborough 100 selectfont
+100 100 moveto
+(Hello World) utf8toutf16be show
+showpage```
+
 Easy!
