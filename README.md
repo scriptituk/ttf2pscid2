@@ -226,7 +226,15 @@ showpage
 or emit UTF-8 text like…
 
 ```postscript
-% include the code for utf8toutf16be from file string.ps in repository pslutils
+% include the code for utf8toutf16be and int2str16 from file string.ps in repository pslutils,
+% or this krunch:
+/utf8toutf16be {[exch 0 exch {exch dup 0 eq {pop dup 16#BF le {16#7F and 0}{dup
+16#DF le {16#1F and 1}{dup 16#EF le {16#0F and 2}{16#07 and 103} ifelse} ifelse}
+ifelse}{1 sub 3 1 roll 16#3F and exch 6 bitshift or exch dup 100 eq {pop
+16#10000 sub dup -10 bitshift 16#3FF and 16#D800 or exch 16#3FF and 16#DC00 or
+0} if} ifelse} forall pop] dup length 1 bitshift string exch 0 exch {3 copy -8
+bitshift put exch 1 add exch 3 copy 16#FF and put pop 1 add} forall pop}bind def
+
 /Marlborough 100 selectfont
 100 100 moveto
 (Hello World) utf8toutf16be show
