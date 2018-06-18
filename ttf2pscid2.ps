@@ -1565,7 +1565,7 @@ end
 	} forall % each cid range
 } bind def
 %EOT
-/cidmap1procstr exch crunchps fold80 def
+/cidmap1procstr exch true crunchps def
 
 (%EOT) heredoc
 % makes CIDMap from cgmap for GDBytes = 2
@@ -1612,7 +1612,7 @@ end
 	} forall % each cid range
 } bind def
 %EOT
-/cidmap2procstr exch crunchps fold80 def
+/cidmap2procstr exch true crunchps def
 
 % stringize cidmap
 /cidmapstr {
@@ -1971,7 +1971,7 @@ end
 
 	$t42 (cidfont dup /CIDMap exch /CIDCount get ) writestring
 	$t42 ([\n) writestring
-	$cmap cidmap cidmapstr { t $t42 exch writestring nl } forall
+	$cmap cidmap cidmapstr { t $t42 exch 80 fold writestring nl } forall
 	$t42 [ (] cidmap) $gdbytes ( readonly put\n) ] concata writestring
 	nl
 
