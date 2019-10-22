@@ -1,6 +1,6 @@
 %!PS-Adobe-3.0
 
-% TTF to CID-keyed font converter by scriptit.co.uk
+% TTF to CID-keyed font converter by Raymond Luckhurst, Scriptit Ltd, https://scriptit.uk
 %
 % Converts TTF to a Type 2 CIDFont with 2-byte Unicode CMap encoding, for embedding into PostScript.
 %
@@ -38,7 +38,8 @@
 
 /json () def
 % NOTE (gs v9): octal escape double quotes, e.g. gs [options] -- file.ps '({\042name\042:true})'
-mark shellarguments pop counttomark 1 ge { % JSON string follows
+mark /.shellarguments where { pop .shellarguments }{ shellarguments } ifelse pop
+counttomark 1 ge { % JSON string follows
 	token {
 		dup type /stringtype eq {
 			/json exch def
