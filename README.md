@@ -53,11 +53,12 @@ Options may be set using Ghostscript parameter switches (`-d` for definitions an
 
 Options may also be set by a JSON-encoded object of key/value pairs, passed as a PostScript string token (in parenthesis) after the script filename (Ghostscript must be called with the `--` command line option).
 JSON-supplied options take precedence over parameter switches.
-PostScript string literals require the 3 special characters ( ) \ to be escaped with a backslash (balanced pairs of parentheses need not be) and non-ASCII characters converted to octal escape sequences.
+The advantage of JSON is that UTF gets converted to an ASCII-compatible representation, as required by PstScript.
+Note that PostScript string literals require the 3 special characters ( ) \ to be escaped with a backslash (balanced pairs of parentheses need not be) and non-ASCII characters converted to octal escape sequences.
 This PostScript-escaping must be done on the JSON-encoded string.
-Final shell-escaping is also necessary.
+Final shell-escaping is also advisable.
 
-Note that GhostScript versions since 9.23 strip double-quote characters from passed-in parameters.
+Note that GhostScript versions since 9.23 use double-quotes to protect whitespace in parameters, therefore they get stripped out, even if escaped, which is surely the shell’s job (but I suppose this is non-standard usage).
 So to pass in " use the \042 octal escape sequence.
 This is always necessary for JSON options.
 
@@ -83,7 +84,13 @@ The PHP utilies file utils.php shows how to do it in PHP.
  ` Arial|arialbd.ttf|Arial Bold|false|© 2008 The Monotype Corporation.|Arial-BoldMT|Bold|Bold|Arial is a  trademark…|Monotype:Arial Bold v5.06|5.06`
 * `gs -q -o- -dNODISPLAY -- ttf2pscid2.ps '({"ttf":"arial.ttf","subset":"Fee: €25 \(£22\)","compress":true})'`  
   is the JSON equivalent of  
-  `gs -q -o- -dNODISPLAY -sttf=arial.ttf -ssubset='Fee: €25 (£22)' -dcompress ttf2pscid2.ps`
+  `gs -q -o- -dNODISPLAY -sttf=arial.ttf -ssubset='Fee: €25 (£22)' -dcompress ttf2pscid2.ps`  
+  but as noted above gs strips quotes in parameters, so do this (see also utils.php):  
+```bash
+  json='({"ttf":"arial.ttf","subset":"Fee: €25 \(£22\)","compress":true})'
+  args=`sed 's/"/\\\\042/g' <<< "$json"`
+  gs -q -o- -dNODISPLAY -- ttf2pscid2.ps "$args"
+```
 
 ### Sample
 
@@ -223,7 +230,7 @@ cidfont dup /CIDFontName get exch /CIDFont defineresource
 /CIDFontName get /Identity-H [2 index] composefont pop
 ```
 
-then emit UTF-16 text like…
+then emit UTF-16 text like this:
 
 ```postscript
 /Marlborough 100 selectfont
@@ -232,7 +239,7 @@ then emit UTF-16 text like…
 showpage
 ```
 
-or emit UTF-8 text like…
+or emit UTF-8 text like this:
 
 ```postscript
 % include the code for utf8toutf16be and int2str16 from file string.ps in repository pslutils,
