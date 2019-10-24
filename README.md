@@ -53,7 +53,7 @@ Options may be set using Ghostscript parameter switches (`-d` for definitions an
 
 Options may also be set by a JSON-encoded object of key/value pairs, passed as a PostScript string token (in parenthesis) after the script filename (Ghostscript must be called with the `--` command line option).
 JSON-supplied options take precedence over parameter switches.
-The advantage of JSON is that UTF gets converted to an ASCII-compatible representation as required by PstScript.
+The advantage of JSON is that UTF gets converted to an ASCII-compatible representation as required by PostScript.
 Note that PostScript string literals require the three special characters ( ) \ to be backslash-escaped (balanced pairs of parentheses need not be) and non-ASCII characters converted to octal escape sequences.
 This PostScript-escaping must be done on the JSON-encoded string and on any non-ASCII subset string.
 Final shell-escaping is also advisable.
@@ -62,7 +62,7 @@ Note that GhostScript versions since 9.23 use double-quotes to protect whitespac
 So to pass in " use the \042 octal escape sequence.
 This is always necessary for JSON options.
 
-The PHP utilies file utils.php shows how to do it in PHP.
+The PHP utilities file utils.php shows how to do it in PHP.
 
 ### Examples:
 
@@ -264,3 +264,4 @@ showpage
 ```
 
 Easy!
+Tested with [Microsoft YaHei TTF](https://docs.microsoft.com/en-us/typography/font-list/microsoft-yahei) with 29425 glyphs in Latin, Cyrillic, Greek, Turkish, Chinese (微软雅黑).
