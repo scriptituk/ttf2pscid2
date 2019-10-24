@@ -26,6 +26,7 @@
 /error { $stderr exch (ERROR ) exch cat (\n) cat writestring $stderr flushfile quit } def
 
 % options
+% NOTE (gs v9): octal-escape double quotes in all command-line string params, i.e. '"' --> '\042'
 /psname dup where { pop pop }{ false def } ifelse
 /optimise dup where { pop pop }{ false def } ifelse
 /subset dup where { pop pop }{ () def } ifelse
@@ -37,7 +38,6 @@
 /inc dup where { pop pop }{ () def } ifelse
 
 /json () def
-% NOTE (gs v9): octal escape double quotes, e.g. gs [options] -- file.ps '({\042name\042:true})'
 mark /.shellarguments where { pop .shellarguments }{ shellarguments } ifelse pop
 counttomark 1 ge { % JSON string follows
 	token {
@@ -1756,25 +1756,25 @@ end
 			} ifelse
 			dup 0 ne { % compressed
 				exch
-				$t42 exch cvas writestring sp $t42 exch cvas writestring
-				$t42 ( RC ) writestring
-				$t42 sdata writestring
+				cvas emit_str emit_sp cvas emit_str
+				( RC ) emit_str
+				sdata emit_str
 				pop
 			}{ % uncompressed
 				pop
-				$t42 exch cvas writestring
-				$t42 ( RB ) writestring
-				$t42 exch writestring
-				$t42 0 write % Type42 padding byte
+				cvas emit_str
+				( RB ) emit_str
+				emit_str
+				0 emit_ord % Type42 padding byte
 			} ifelse
 		}{
-			$t42 (<) writestring
+			(<) emit_chr
 			/$w $t42 /ASCIIHexEncode filter def
 			$w exch writestring
 			$w 0 write % Type42 padding byte
 			$w closefile
 		} ifelse
-		nl
+		emit_nl
 		$t42 flushfile
 	}{
 		pop
@@ -1782,72 +1782,80 @@ end
 } bind def
 
 /comment {
-	$t42 (% ) writestring
-	$t42 exch writestring
-	nl
+	(% ) emit_str
+	emit_str
+	emit_nl
 } bind def
 
 /glyfcomment {
 	t_glyf 1 index get
-	$t42 (%\t) writestring
+	(%\t) emit_str
 	% GID(s)
-	$t42 (gid=) writestring
-	$t42 2 index cvas writestring
+	(gid=) emit_str
+	1 index cvas emit_str
 	begin
 		numberOfContours 0 lt {
-			$t42 ( [) writestring
+			( [) emit_str
 			()
 			components {
 				/glyphIndex get
-				$t42 2 index writestring
-				$t42 exch cvas writestring
+				1 index emit_str
+				cvas emit_str
 				pop ( )
 			} forall
 			pop
-			$t42 (]) writestring
+			(]) emit_chr
 		} if
 	end
 	% CID
 	$gmap 1 index known {
 		$gmap exch get
-		sp $t42 (cid=) writestring
-		$t42 1 index cvas writestring sp
+		emit_sp (cid=) emit_str
+		dup cvas emit_str emit_sp
 		dup dup 16#20 gt exch 16#7F lt and {
-			$t42 exch chr writestring
+			(\() emit_chr
+			dup dup dup 40 eq exch 41 eq or exch 92 eq or {
+				(\\) emit_chr
+			} if
+			emit_ord
+			(\)) emit_chr
 		}{
-			$t42 exch octal16 writestring
+			dup
+			(\() emit_chr octal16 emit_str (\)) emit_chr
+			emit_sp
+			(<) emit_chr hex16 emit_str (>) emit_chr
 		} ifelse
 	}{
 		pop
 	} ifelse
-	nl
+	emit_nl
 } bind def
 
 /hmtxcomment {
-	$t42 (%\t) writestring
+	(%\t) emit_str
 	dup d_hmtx /data get length 1 sub lt {
-		$t42 (hMetrics) writestring
+		(hMetrics) emit_str
 		d_hmtx /data get length 2 gt {
-			$t42 ( \() writestring
-			$t42 exch cvas writestring
-			$t42 (\)) writestring
+			( \() emit_str
+			cvas emit_str
+			(\)) emit_chr
 		}{
 			pop
 		} ifelse
 	}{
 		pop
-		$t42 (leftSideBearing) writestring
+		(leftSideBearing) emit_str
 	} ifelse
-	nl
+	emit_nl
 } bind def
 
 /locacomment {
 	d_loca /data get length 1 gt {
-		$t42 (%\t) writestring
-		$t42 (loca \() writestring
-		$t42 exch cvas writestring
-		$t42 (\)) writestring
-		nl
+		(%\t) emit_str
+		(loca \() emit_str
+		cvas emit_str
+		(\)) emit_chr
+		emit_nl
 	}{
 		pop
 	} ifelse
@@ -1857,7 +1865,7 @@ end
 /sfnts {
 	w_directory begin
 		comments {
-			(directory) comment
+			(table directory) comment
 		} if
 		data sfnt
 		$tables {
@@ -1958,35 +1966,35 @@ end
 
 	/$t42 t42 (w) file def % Type42 output file
 
-	$t42 (%!PS-TrueTypeFont) writestring nl
-	nl
+	(%!PS-TrueTypeFont) emit_str emit_nl
+	emit_nl
 
-	$t42 $gdbytes 2 eq { cidmap2procstr }{ cidmap1procstr } ifelse writestring nl
-	nl
-	$t42 cmapstr writestring nl
+	$gdbytes 2 eq { cidmap2procstr }{ cidmap1procstr } ifelse emit_str emit_nl
+	emit_nl
+	cmapstr emit_str emit_nl
 
-	$t42 (/cidfont ) writestring
-	$t42 cidfont cidfontstr writestring
-	$t42 ( def\n) writestring
-	nl
+	(/cidfont ) emit_str
+	cidfont cidfontstr emit_str
+	( def) emit_str emit_nl
+	emit_nl
 
-	$t42 (cidfont dup /CIDMap exch /CIDCount get ) writestring
-	$t42 ([\n) writestring
-	$cmap cidmap cidmapstr { t $t42 exch 80 fold writestring nl } forall
-	$t42 [ (] cidmap) $gdbytes ( readonly put\n) ] concata writestring
-	nl
+	(cidfont dup /CIDMap exch /CIDCount get [) emit_str emit_nl
+	$cmap cidmap cidmapstr { emit_tab 80 fold emit_str emit_nl } forall
+	(] cidmap) emit_str $gdbytes cvas emit_chr ( readonly put) emit_str emit_nl
+	emit_nl
 
 	binary {
-		$t42 rb writestring nl
-		compress { $t42 rc writestring nl } if
-		nl
+		rb emit_str emit_nl
+		compress { rc emit_str emit_nl } if
+		emit_nl
 	} if
 
-	$t42 (cidfont /sfnts [\n) writestring
+	(cidfont /sfnts [) emit_str emit_nl
 	sfnts
-	$t42 (] readonly put\n) writestring nl
+	(] readonly put) emit_str emit_nl
+	emit_nl
 
-	$t42 install writestring nl
+	install emit_str emit_nl
 
 	$t42 closefile
 } bind def
@@ -2032,9 +2040,12 @@ end
 
 10000000 setvmthreshold % lots of RAM
 
-/t { $t42 9 write } bind def % tab
-/sp { $t42 32 write } bind def % space
-/nl { $t42 10 write } bind def % newline
+/emit_str { $t42 exch writestring } bind def
+/emit_ord { $t42 exch write } bind def
+/emit_chr { ord emit_ord } bind def
+/emit_tab { 9 emit_ord } bind def
+/emit_sp { 32 emit_ord } bind def
+/emit_nl { 10 emit_ord } bind def
 
 % TTF input file(s)
 
