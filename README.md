@@ -52,10 +52,11 @@ Options may be set using Ghostscript parameter switches (`-d` for definitions an
   no conversion will be done if this option is given – it is for gathering font information only
 
 Options may also be set by a JSON-encoded object of key/value pairs, passed as a PostScript string token (in parenthesis) after the script filename (Ghostscript must be called with the `--` command line option).
-JSON-supplied options take precedence over parameter switches.
-The advantage of JSON is that UTF gets converted to an ASCII-compatible representation as required by PostScript.
+JSON-supplied options take precedence over parameter switch values.
+The advantage of JSON is that Unicode characters represented as ASCII-compatible escapes (like `\u0142`) transport reliably and PostScript can embed them in a string token if required.
+I have not tested this project on Windows but on macOS/Linux systems UTF-8 works perfectly both in Ghostscript parameters and unescaped UTF-8 JSON.
 Note that PostScript string literals require the three special characters ( ) \ to be backslash-escaped (balanced pairs of parentheses need not be) and non-ASCII characters converted to octal escape sequences.
-This PostScript-escaping must be done on the JSON-encoded string and on any non-ASCII subset string.
+This PostScript-escaping must be done on the JSON-encoded string and on any subset string.
 Final shell-escaping is also advisable.
 
 Note that GhostScript versions since 9.23 use double-quotes to protect whitespace in parameters, therefore they get stripped out even if escaped, which is surely the shell’s job (but I suppose this is non-standard usage).
