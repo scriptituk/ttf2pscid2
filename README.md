@@ -55,13 +55,12 @@ Options may also be set by a JSON-encoded object of key/value pairs, passed as a
 JSON-supplied options take precedence over parameter switch values.
 The advantage of JSON is that Unicode characters represented as ASCII-compatible escapes (like `\u0142`) transport reliably and PostScript can embed them in a string token if required.
 I have not tested this project on Windows but on macOS/Linux systems UTF-8 works perfectly both in Ghostscript parameters and unescaped UTF-8 JSON.
-Note that PostScript string literals require the three special characters ( ) \ to be backslash-escaped (balanced pairs of parentheses need not be) and non-ASCII characters converted to octal escape sequences.
-This PostScript-escaping must be done on the JSON-encoded string and on any subset string.
-Final shell-escaping is also advisable.
 
-Note that GhostScript versions since 9.23 use double-quotes to protect whitespace in parameters, therefore they get stripped out even if escaped, which is surely the shell’s job (but I suppose this is non-standard usage).
-So to pass in " use the \042 octal escape sequence.
-This is always necessary for JSON options.
+Note that PostScript string literals require the three special characters ( ) \ to be backslash-escaped (balanced pairs of parentheses need not be) and " converted to \042 octal escape
+(because GhostScript versions since 9.23 use double-quotes to protect argument whitespace so they get stripped out, which is arguably the shell’s job but I suppose this is non-standard usage).
+
+This PostScript-escaping must be done on the JSON-encoded string and on any subset string containing ( ) \ or ".
+Final shell-escaping is also advisable.
 
 The PHP utilities file utils.php shows how to do it in PHP.
 
