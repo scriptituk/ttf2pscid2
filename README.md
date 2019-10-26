@@ -81,15 +81,15 @@ The PHP utilities file utils.php shows how to do it in PHP.
 * `gs -q -o info.txt -dNODISPLAY -sttf=arialbd.ttf -dinfo ttf2pscid2.ps`  
   writes font information for arialbd.ttf to info.txt, e.g. (tabs shown as |):  
   `family|filename|fullname|issymbolfont|notice|psname|style|subfamily|trademark|uniqueid|version`  
- ` Arial|arialbd.ttf|Arial Bold|false|© 2008 The Monotype Corporation.|Arial-BoldMT|Bold|Bold|Arial is a  trademark…|Monotype:Arial Bold v5.06|5.06`
+  `Arial|arialbd.ttf|Arial Bold|false|© 2008 The Monotype Corporation.|Arial-BoldMT|Bold|Bold|Arial is a  trademark…|Monotype:Arial Bold v5.06|5.06`
 * `gs -q -o- -dNODISPLAY -- ttf2pscid2.ps '({"ttf":"arial.ttf","subset":"Fee: €25 \(£22\)","compress":true})'`  
   is the JSON equivalent of  
   `gs -q -o- -dNODISPLAY -sttf=arial.ttf -ssubset='Fee: €25 (£22)' -dcompress ttf2pscid2.ps`  
-  but as noted above gs strips quotes in parameters, so do this (see also utils.php):  
+  but as noted above gs strips double-quotes from parameters, so do this (see also utils.php):  
 ```bash
-  json='({"ttf":"arial.ttf","subset":"Fee: €25 \(£22\)","compress":true})'
-  args=`sed 's/"/\\\\042/g' <<< "$json"`
-  gs -q -o- -dNODISPLAY -- ttf2pscid2.ps "$args"
+  json='{"ttf":"arial.ttf","subset":"Fee: €25 (£22)","compress":true}'
+  args=`sed 's/\([()\\\\]\)/\\\\\1/g;s/"/\\\\042/g' <<< "$json"` # escape ( ) \ and "
+  gs -q -o- -dNODISPLAY -- ttf2pscid2.ps "($args)"
 ```
 
 ### Sample
