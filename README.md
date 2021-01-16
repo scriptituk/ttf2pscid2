@@ -13,23 +13,23 @@ Subsetting is supported. OpenType/TTF is supported but not OpenType/CFF as yet n
 
 Basic Multilingual Plane only; surrogate pairs for supplementary characters show as `.notdef`.  
 Depends on [pslutils](https://github.com/scriptituk/pslutils) files string.ps, file.ps, sort.ps & math.ps.  
-Tested on GhostScript v8.7 to v9.27.
+Tested on GhostScript v8.7 to v9.53.
 
 ### Usage:
 
-* `gs -dQUIET -dNODISPLAY -dBATCH -dNOPAUSE <options> ttf2pscid2.ps`
+* `gs -dQUIET -dNOSAFER -dNODISPLAY -dBATCH -dNOPAUSE <options> ttf2pscid2.ps`
 
 or simply  
 
-* `gs -q -o- -dNODISPLAY <options> ttf2pscid2.ps`
+* `gs -q -o- -dNOSAFER -dNODISPLAY <options> ttf2pscid2.ps`
 
 or (recommended)
 
-* `gs -q -o- -dNODISPLAY -- ttf2pscid2.ps '(JSON options)'`
+* `gs -q -o- -dNOSAFER -dNODISPLAY -- ttf2pscid2.ps '(JSON options)'`
 
 e.g.
 
-* `gs -q -o- -dNODISPLAY -sttf=arial.ttf ttf2pscid2.ps`  
+* `gs -q -o- -dNOSAFER -dNODISPLAY -sttf=arial.ttf ttf2pscid2.ps`  
   converts arial.ttf to arial.t42, the .t42 extension indicates Type 42 derived PostScript code
 
 then insert the generated code into a PostScript file and use it as normal, e.g.:
@@ -66,35 +66,35 @@ The PHP utilities file utils.php shows how to do it in PHP.
 
 ### Examples:
 
-* `gs -q -o- -dNODISPLAY -sttf=times.ttf -st42=times.ps ttf2pscid2.ps`  
+* `gs -q -o- -dNOSAFER -dNODISPLAY -sttf=times.ttf -st42=times.ps ttf2pscid2.ps`  
   converts times.ttf to times.ps
-* `gs -q -o- -dNODISPLAY -sttf=here/ttf/ -st42=there/t42/ ttf2pscid2.ps`  
+* `gs -q -o- -dNOSAFER -dNODISPLAY -sttf=here/ttf/ -st42=there/t42/ ttf2pscid2.ps`  
   converts all TTFs in here/ttf/ to .t42 files in there/t42/ much faster than converting singly
-* `gs -q -o- -dNODISPLAY -sttf=/src/arial.ttf -st42=/dest/ -sinc=/bin/inc/ /bin/ttf2pscid2.ps`  
+* `gs -q -o- -dNOSAFER -dNODISPLAY -sttf=/src/arial.ttf -st42=/dest/ -sinc=/bin/inc/ /bin/ttf2pscid2.ps`  
   converts /src/arial.ttf saving PostScript file in /dest/ setting include path to /bin/inc/
-* `gs -q -o- -dNODISPLAY -sttf=arial.ttf -dpsname ttf2pscid2.ps`  
+* `gs -q -o- -dNOSAFER -dNODISPLAY -sttf=arial.ttf -dpsname ttf2pscid2.ps`  
   converts arial.ttf to say ArialMT.t42 where ArialMT is the PostScript font name given in arial.ttf
-* `gs -q -o- -dNODISPLAY -sttf=arial.ttf -doptimise -dcompress ttf2pscid2.ps`  
+* `gs -q -o- -dNOSAFER -dNODISPLAY -sttf=arial.ttf -doptimise -dcompress ttf2pscid2.ps`  
   compacts and compresses to produce the smallest output file
-* `gs -q -o- -dNODISPLAY -sttf=arial.ttf -ssubset='Fee: €25 (£22)' ttf2pscid2.ps`  
+* `gs -q -o- -dNOSAFER -dNODISPLAY -sttf=arial.ttf -ssubset='Fee: €25 (£22)' ttf2pscid2.ps`  
   subsets arial.ttf to contain UTF-8 characters ' ():25Fe£€' only (10 CIDs)
-* `gs -q -o info.txt -dNODISPLAY -sttf=arialbd.ttf -dinfo ttf2pscid2.ps`  
+* `gs -q -o info.txt -dNOSAFER -dNODISPLAY -sttf=arialbd.ttf -dinfo ttf2pscid2.ps`  
   writes font information for arialbd.ttf to info.txt, e.g. (tabs shown as |):  
   `family|filename|fullname|issymbolfont|notice|psname|style|subfamily|trademark|uniqueid|version`  
   `Arial|arialbd.ttf|Arial Bold|false|© 2008 The Monotype Corporation.|Arial-BoldMT|Bold|Bold|Arial is a  trademark…|Monotype:Arial Bold v5.06|5.06`
-* `gs -q -o- -dNODISPLAY -- ttf2pscid2.ps '({"ttf":"arial.ttf","subset":"Fee: €25 \(£22\)","compress":true})'`  
+* `gs -q -o- -dNOSAFER -dNODISPLAY -- ttf2pscid2.ps '({"ttf":"arial.ttf","subset":"Fee: €25 \(£22\)","compress":true})'`  
   is the JSON equivalent of  
-  `gs -q -o- -dNODISPLAY -sttf=arial.ttf -ssubset='Fee: €25 (£22)' -dcompress ttf2pscid2.ps`  
+  `gs -q -o- -dNOSAFER -dNODISPLAY -sttf=arial.ttf -ssubset='Fee: €25 (£22)' -dcompress ttf2pscid2.ps`  
   but as noted above gs strips double-quotes from parameters, so do this (see also utils.php):  
 ```bash
   json='{"ttf":"arial.ttf","subset":"Fee: €25 (£22)","compress":true}'
   args=`sed 's/\([()\\\\]\)/\\\\\1/g;s/"/\\\\042/g' <<< "$json"` # escape ( ) \ and "
-  gs -q -o- -dNODISPLAY -- ttf2pscid2.ps "($args)"
+  gs -q -o- -dNOSAFER -dNODISPLAY -- ttf2pscid2.ps "($args)"
 ```
 
 ### Sample
 
-`gs -q -o- -dNODISPLAY -sttf=Marlborough.ttf -ssubset='Olá mundo' -dcomments ttf2pscid2.ps`
+`gs -q -o- -dNOSAFER -dNODISPLAY -sttf=Marlborough.ttf -ssubset='Olá mundo' -dcomments ttf2pscid2.ps`
 
 produces…
 
