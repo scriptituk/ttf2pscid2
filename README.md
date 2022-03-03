@@ -13,7 +13,7 @@ Subsetting is supported. OpenType/TTF is supported but not OpenType/CFF as yet n
 
 Basic Multilingual Plane only; surrogate pairs for supplementary characters show as `.notdef`.  
 Depends on [pslutils](https://github.com/scriptituk/pslutils) files string.ps, file.ps, sort.ps & math.ps.  
-Tested on GhostScript v8.7 to v9.53.
+Tested on GhostScript v8.7 to v9.55.
 
 ### Usage:
 
@@ -250,12 +250,12 @@ or emit UTF-8 text for ‘Olá mundo’ like this:
 ```postscript
 % include the code for utf8toutf16be and int2str16 from file string.ps in repository pslutils,
 % or include this krunch:
-/utf8toutf16be {[exch 0 exch {exch dup 0 eq {pop dup 16#BF le {16#7F and 0}{dup
-16#DF le {16#1F and 1}{dup 16#EF le {16#0F and 2}{16#07 and 103} ifelse} ifelse}
-ifelse}{1 sub 3 1 roll 16#3F and exch 6 bitshift or exch dup 100 eq {pop
-16#10000 sub dup -10 bitshift 16#3FF and 16#D800 or exch 16#3FF and 16#DC00 or
-0} if} ifelse} forall pop] dup length 1 bitshift string exch 0 exch {3 copy -8
-bitshift put exch 1 add exch 3 copy 16#FF and put pop 1 add} forall pop} bind def
+/utf8toutf16be {[exch 0 exch {exch dup 0 eq {pop dup 16#C0 lt {16#7F and 0}{dup
+16#E0 lt {16#1F and 1}{dup 16#F0 lt {16#F and 2}{16#7 and 13} ifelse} ifelse}
+ifelse}{1 sub 3 1 roll 8#77 and exch 6 bitshift or exch dup 10 eq {pop 16#10000
+sub dup -10 bitshift 16#3FF and 16#D800 or exch 16#3FF and 16#DC00 or 0} if}
+ifelse} forall pop] dup length 1 bitshift string exch 0 exch {3 copy -8 bitshift
+255 and put exch 1 add exch 3 copy 255 and put pop 1 add} forall pop} bind def
 
 /Marlborough 100 selectfont
 100 100 moveto
