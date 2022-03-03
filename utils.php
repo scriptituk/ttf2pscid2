@@ -4,11 +4,15 @@
  * Convert TTF to Type42 via shell exec of gs ttf2pscid2.ps using JSON options
  * @param array $args associative array of option names and properly typed values
  * @param string $out optional path for -sOutputFile= or -o
+ * @param boolean $esc_unicode true to escape multibyte Unicode args as \uXXXX
  * @return string the output from the gs command
  */
-function ttf2pscid2($args, $out = '') {
+function ttf2pscid2($args, $out = '', $esc_unicode = true) {
     $o = $out ? "-o '$out'" : '-dBATCH -dNOPAUSE';
-    $json = json_encode($args, JSON_HEX_APOS | JSON_HEX_QUOT); // escape ' " for clarity
+    $opts = JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES; // escape ' " for clarity
+    if (!$esc_unicode)
+        $opts |= JSON_UNESCAPED_UNICODE;
+    $json = json_encode($args, $opts);
     $arg = ps_escape_string($json, true, true); // postscript string token
     $arg = escapeshellarg($arg); // shell arg
     $cmd = "gs -q -dNODISPLAY $o -- ttf2pscid2.ps $arg";
@@ -46,4 +50,3 @@ $subset = 'Olá mundo';
 $args = ['ttf' => $ttf, 'subset' => $subset, 'comments' => true, 'info' => false, 'compress' => false];
 echo ttf2pscid2($args, 'info.txt') . PHP_EOL;
 */
-
